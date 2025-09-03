@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Network, DataSet } from 'vis-network/standalone';
+import { Network } from 'vis-network';
+import { DataSet } from 'vis-data';
 import { Users, Lightbulb, Target, Building, Code } from 'lucide-react';
 
 const KnowledgeGraph = ({ graphData, onNodeClick }) => {

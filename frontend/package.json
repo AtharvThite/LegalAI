@@ -16,7 +16,9 @@
     "lucide-react": "^0.542.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-scripts": "^5.0.1"
+    "react-scripts": "^5.0.1",
+    "vis-data": "^8.0.1",
+    "vis-network": "^10.0.1"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",

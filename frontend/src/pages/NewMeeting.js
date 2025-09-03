@@ -1,13 +1,27 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Square, Play, Pause, Settings, Volume2, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Mic, 
+  MicOff, 
+  Pause, 
+  Play, 
+  Square, 
+  Clock, 
+  Globe, 
+  Folder,
+  Settings,
+  Volume2,
+  VolumeX,
+  Plus
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const NewMeeting = () => {
+const NewMeeting = ({ onMeetingCreated, onNavigate }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [meetingTitle, setMeetingTitle] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('en-US');
+  const [selectedFolder, setSelectedFolder] = useState('recent');
   const [audioLevel, setAudioLevel] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [meetingId, setMeetingId] = useState(null);
@@ -15,6 +29,10 @@ const NewMeeting = () => {
   const [currentSpeaker, setCurrentSpeaker] = useState('Speaker A');
   const [audioStream, setAudioStream] = useState(null);
   const [error, setError] = useState('');
+  const [folders, setFolders] = useState([]);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderColor, setNewFolderColor] = useState('#3B82F6');
 
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -23,6 +41,15 @@ const NewMeeting = () => {
   const audioChunksRef = useRef([]);
   const speechRecognitionRef = useRef(null);
   const { makeAuthenticatedRequest } = useAuth();
+
+  const colorOptions = [
+    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
+    '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'
+  ];
+
+  useEffect(() => {
+    fetchFolders();
+  }, []);
 
   useEffect(() => {
     let interval;
@@ -55,10 +82,12 @@ const NewMeeting = () => {
       // Start audio level monitoring
       const updateAudioLevel = () => {
         if (analyserRef.current) {
-          const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+          const bufferLength = analyserRef.current.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
           analyserRef.current.getByteFrequencyData(dataArray);
-          const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
-          setAudioLevel(Math.min(100, (average / 128) * 100));
+          
+          const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+          setAudioLevel(average);
           
           if (isRecording) {
             requestAnimationFrame(updateAudioLevel);
@@ -101,11 +130,9 @@ const NewMeeting = () => {
         const newEntry = {
           id: Date.now(),
           speaker: currentSpeaker,
-          text: finalTranscript.trim(),
-          timestamp: new Date().toLocaleTimeString(),
-          confidence: event.results[event.results.length - 1][0].confidence || 0.8
+          text: finalTranscript,
+          timestamp: new Date().toLocaleTimeString()
         };
-        
         setLiveTranscript(prev => [...prev, newEntry]);
       }
     };
@@ -113,17 +140,55 @@ const NewMeeting = () => {
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       if (event.error === 'not-allowed') {
-        setError('Microphone access denied. Please allow microphone access and try again.');
+        setError('Microphone access denied. Please enable microphone permissions.');
       }
     };
     
     recognition.onend = () => {
       if (isRecording && !isPaused) {
-        recognition.start(); // Restart recognition if still recording
+        recognition.start();
       }
     };
     
     speechRecognitionRef.current = recognition;
+  };
+
+  const fetchFolders = async () => {
+    try {
+      const response = await makeAuthenticatedRequest('/meetings/folders');
+      if (response.ok) {
+        const data = await response.json();
+        setFolders(data);
+      }
+    } catch (error) {
+      console.error('Error fetching folders:', error);
+    }
+  };
+
+  const createFolder = async () => {
+    if (!newFolderName.trim()) return;
+
+    try {
+      const response = await makeAuthenticatedRequest('/meetings/folders', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newFolderName,
+          color: newFolderColor
+        })
+      });
+
+      if (response.ok) {
+        const newFolder = await response.json();
+        setFolders(prev => [...prev, newFolder]);
+        setSelectedFolder(newFolder.id);
+        setNewFolderName('');
+        setNewFolderColor('#3B82F6');
+        setShowCreateFolder(false);
+      }
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      setError('Failed to create folder');
+    }
   };
 
   const startRecording = async () => {
@@ -160,25 +225,27 @@ const NewMeeting = () => {
       
       mediaRecorderRef.current = mediaRecorder;
       
-      // Create meeting
-      const response = await makeAuthenticatedRequest('/meetings', {
+      // Create meeting with selected folder
+      const meetingResponse = await makeAuthenticatedRequest('/meetings', {
         method: 'POST',
         body: JSON.stringify({
           title: meetingTitle || `Meeting ${new Date().toLocaleDateString()}`,
+          folder_id: selectedFolder,
           language: selectedLanguage,
           status: 'recording'
         })
       });
-      
-      if (!response.ok) {
+
+      if (!meetingResponse.ok) {
         throw new Error('Failed to create meeting');
       }
-      
-      const meetingData = await response.json();
+
+      const meetingData = await meetingResponse.json();
       setMeetingId(meetingData.id);
       
       // Start recording
       mediaRecorder.start(1000); // Record in 1-second chunks
+      setIsRecording(true);
       
       // Setup speech recognition
       setupSpeechRecognition();
@@ -186,12 +253,9 @@ const NewMeeting = () => {
         speechRecognitionRef.current.start();
       }
       
-      setIsRecording(true);
-      setRecordingTime(0);
-      
     } catch (error) {
       console.error('Error starting recording:', error);
-      setError(error.message || 'Failed to start recording. Please check your microphone permissions.');
+      setError(error.message || 'Failed to start recording');
     }
   };
 
@@ -202,13 +266,14 @@ const NewMeeting = () => {
         if (speechRecognitionRef.current) {
           speechRecognitionRef.current.start();
         }
+        setIsPaused(false);
       } else {
         mediaRecorderRef.current.pause();
         if (speechRecognitionRef.current) {
           speechRecognitionRef.current.stop();
         }
+        setIsPaused(true);
       }
-      setIsPaused(!isPaused);
     }
   };
 
@@ -221,47 +286,50 @@ const NewMeeting = () => {
           speechRecognitionRef.current.stop();
         }
         
-        // Stop audio stream
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
         }
         
-        // Close audio context
-        if (audioContextRef.current) {
-          audioContextRef.current.close();
-        }
-        
         setIsRecording(false);
         setIsPaused(false);
-        setAudioLevel(0);
         
-        // Save transcript to database
-        if (meetingId && liveTranscript.length > 0) {
-          const fullTranscript = liveTranscript.map(entry => 
-            `[${entry.timestamp}] ${entry.speaker}: ${entry.text}`
-          ).join('\n');
-          
-          await makeAuthenticatedRequest(`/transcription/${meetingId}`, {
-            method: 'POST',
-            body: JSON.stringify({
-              transcript: fullTranscript,
-              speakers: { [currentSpeaker]: liveTranscript.length },
-              language: selectedLanguage
-            })
-          });
-          
-          // Update meeting status
+        // Update meeting status
+        if (meetingId) {
           await makeAuthenticatedRequest(`/meetings/${meetingId}`, {
             method: 'PUT',
             body: JSON.stringify({
-              status: 'completed'
+              status: 'completed',
+              ended_at: new Date().toISOString()
             })
           });
+
+          // Save transcript if available
+          if (liveTranscript.length > 0) {
+            const fullTranscript = liveTranscript
+              .map(entry => `${entry.timestamp} - ${entry.speaker}: ${entry.text}`)
+              .join('\n');
+
+            await makeAuthenticatedRequest(`/transcription/${meetingId}`, {
+              method: 'POST',
+              body: JSON.stringify({
+                transcript: fullTranscript,
+                speakers: [...new Set(liveTranscript.map(entry => entry.speaker))],
+                language: selectedLanguage,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+            });
+          }
+
+          // Navigate to meeting details
+          if (onMeetingCreated) {
+            onMeetingCreated(meetingId);
+          }
         }
       }
     } catch (error) {
       console.error('Error stopping recording:', error);
-      setError('Failed to save recording');
+      setError('Failed to stop recording properly');
     }
   };
 
@@ -303,26 +371,121 @@ const NewMeeting = () => {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Language
-              </label>
-              <select
-                value={selectedLanguage}
-                onChange={(e) => setSelectedLanguage(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Language
+                </label>
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                  <option value="es-ES">Spanish</option>
+                  <option value="fr-FR">French</option>
+                  <option value="de-DE">German</option>
+                  <option value="it-IT">Italian</option>
+                  <option value="pt-BR">Portuguese</option>
+                  <option value="ja-JP">Japanese</option>
+                  <option value="ko-KR">Korean</option>
+                  <option value="zh-CN">Chinese (Simplified)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <Folder className="inline w-4 h-4 mr-1" />
+                  Save to Folder
+                </label>
+                <div className="flex space-x-2">
+                  <select
+                    value={selectedFolder}
+                    onChange={(e) => setSelectedFolder(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {folders.map(folder => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setShowCreateFolder(true)}
+                    className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                    title="Create new folder"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Folder Modal */}
+      {showCreateFolder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Create New Folder
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Folder Name
+                </label>
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Enter folder name..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  autoFocus
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Color
+                </label>
+                <div className="flex space-x-2">
+                  {colorOptions.map(color => (
+                    <button
+                      key={color}
+                      onClick={() => setNewFolderColor(color)}
+                      className={`w-8 h-8 rounded-full border-2 ${
+                        newFolderColor === color ? 'border-gray-900 dark:border-white' : 'border-gray-300 dark:border-gray-600'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={createFolder}
+                disabled={!newFolderName.trim()}
+                className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors"
               >
-                <option value="en-US">English (US)</option>
-                <option value="en-GB">English (UK)</option>
-                <option value="es-ES">Spanish</option>
-                <option value="fr-FR">French</option>
-                <option value="de-DE">German</option>
-                <option value="it-IT">Italian</option>
-                <option value="pt-BR">Portuguese</option>
-                <option value="ja-JP">Japanese</option>
-                <option value="ko-KR">Korean</option>
-                <option value="zh-CN">Chinese (Simplified)</option>
-              </select>
+                Create Folder
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateFolder(false);
+                  setNewFolderName('');
+                  setNewFolderColor('#3B82F6');
+                }}
+                className="flex-1 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

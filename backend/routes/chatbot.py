@@ -3,8 +3,17 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from utils.ai import chatbot_answer, create_vector_store, load_vector_store
 from datetime import datetime
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
 
 chatbot_bp = Blueprint('chatbot', __name__)
+
+def is_valid_objectid(id_string):
+    """Check if string is a valid ObjectId"""
+    try:
+        ObjectId(id_string)
+        return True
+    except (InvalidId, TypeError):
+        return False
 
 @chatbot_bp.route('/<meeting_id>/chat', methods=['POST'])
 @jwt_required()
@@ -16,11 +25,17 @@ def ask_question(meeting_id):
     if not question:
         return jsonify({'error': 'Question is required'}), 400
     
+    # Build query based on whether meeting_id is ObjectId or custom ID
+    if is_valid_objectid(meeting_id):
+        query = {
+            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            'user_id': user_id
+        }
+    else:
+        query = {'id': meeting_id, 'user_id': user_id}
+    
     # Verify meeting ownership
-    meeting = current_app.mongo.db.meetings.find_one({
-        '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
-        'user_id': user_id
-    })
+    meeting = current_app.mongo.db.meetings.find_one(query)
     
     if not meeting:
         return jsonify({'error': 'Meeting not found'}), 404
@@ -64,11 +79,17 @@ def ask_question(meeting_id):
 def get_chat_history(meeting_id):
     user_id = get_jwt_identity()
     
+    # Build query based on whether meeting_id is ObjectId or custom ID
+    if is_valid_objectid(meeting_id):
+        query = {
+            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            'user_id': user_id
+        }
+    else:
+        query = {'id': meeting_id, 'user_id': user_id}
+    
     # Verify meeting ownership
-    meeting = current_app.mongo.db.meetings.find_one({
-        '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
-        'user_id': user_id
-    })
+    meeting = current_app.mongo.db.meetings.find_one(query)
     
     if not meeting:
         return jsonify({'error': 'Meeting not found'}), 404

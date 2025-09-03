@@ -1,3 +1,7 @@
 .env
 __pycache__/
 node_modules/
+backend/vector_stores/
+backend/embeddings/
+backend/.env
+frontend/.env
