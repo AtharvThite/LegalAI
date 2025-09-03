@@ -23,7 +23,8 @@ import {
   Edit,
   Eye,
   Share2,
-  Archive
+  Archive,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -117,11 +118,10 @@ const AllMeetings = ({ onMeetingClick }) => {
       });
 
       if (response.ok) {
-        const folder = await response.json();
-        setFolders(prev => [...prev, folder]);
+        await fetchFolders();
+        setShowCreateFolder(false);
         setNewFolderName('');
         setNewFolderColor('#3B82F6');
-        setShowCreateFolder(false);
       }
     } catch (error) {
       console.error('Failed to create folder:', error);
@@ -296,6 +296,24 @@ const AllMeetings = ({ onMeetingClick }) => {
     return '0m';
   };
 
+  // Sort meetings by folder color when sortBy is 'folder_color'
+  const sortMeetingsByFolderColor = (meetingsToSort) => {
+    if (sortBy !== 'folder_color') return meetingsToSort;
+    
+    return [...meetingsToSort].sort((a, b) => {
+      const folderA = folders.find(f => f.id === a.folder_id);
+      const folderB = folders.find(f => f.id === b.folder_id);
+      const colorA = folderA?.color || '#000000';
+      const colorB = folderB?.color || '#000000';
+      
+      if (sortOrder === 'asc') {
+        return colorA.localeCompare(colorB);
+      } else {
+        return colorB.localeCompare(colorA);
+      }
+    });
+  };
+
   const renderMeetingCard = (meeting) => {
     const folder = folders.find(f => f.id === meeting.folder_id);
     const folderColor = folder?.color || '#3B82F6';
@@ -309,9 +327,8 @@ const AllMeetings = ({ onMeetingClick }) => {
           isSelected 
             ? 'border-blue-500 dark:border-blue-400 shadow-lg' 
             : 'border-gray-200 dark:border-gray-700'
-        } shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group relative`}
+        } shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group relative overflow-hidden`}
         onClick={() => onMeetingClick(meetingId)}
-        style={{ overflow: 'visible' }} // Allow menu to overflow the card
       >
         {/* Selection checkbox */}
         <div 
@@ -330,9 +347,9 @@ const AllMeetings = ({ onMeetingClick }) => {
           </button>
         </div>
 
-        {/* Color bar at top */}
+        {/* Color bar at top - confined to tab area */}
         <div 
-          className="h-1 rounded-t-2xl"
+          className="h-1"
           style={{ backgroundColor: folderColor }}
         />
         
@@ -391,138 +408,134 @@ const AllMeetings = ({ onMeetingClick }) => {
                 {meeting.status}
               </span>
               
-              {/* Three-dot menu */}
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="relative">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMeetingMenu(showMeetingMenu === meetingId ? null : meetingId);
+              {/* Three-dot menu - allow overflow */}
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMeetingMenu(showMeetingMenu === meetingId ? null : meetingId);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <MoreVertical className="w-4 h-4 text-gray-400" />
+                </button>
+
+                {/* Dropdown menu - positioned to extend outside card */}
+                {showMeetingMenu === meetingId && (
+                  <div 
+                    className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
+                    style={{ 
+                      zIndex: 9999,
+                      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
                     }}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                   >
-                    <MoreVertical className="w-4 h-4 text-gray-400" />
-                  </button>
+                    <div className="py-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onMeetingClick(meetingId);
+                          setShowMeetingMenu(null);
+                        }}
+                        className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>View Details</span>
+                      </button>
 
-                  {/* Dropdown menu - positioned to extend outside card */}
-                  {showMeetingMenu === meetingId && (
-                    <div 
-                      className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
-                      style={{ 
-                        zIndex: 9999,
-                        position: 'absolute',
-                        // Ensure it appears above everything
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-                      }}
-                    >
-                      <div className="py-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowIndividualMoveDialog(meeting);
+                          setShowMeetingMenu(null);
+                        }}
+                        className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Move className="w-4 h-4" />
+                        <span>Move to Folder</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          shareIndividualMeeting(meetingId);
+                          setShowMeetingMenu(null);
+                        }}
+                        className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        <span>Share</span>
+                      </button>
+
+                      <div className="relative group/export">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onMeetingClick(meetingId);
-                            setShowMeetingMenu(null);
-                          }}
-                          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          className="w-full flex items-center justify-between px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
-                          <Eye className="w-4 h-4" />
-                          <span>View Details</span>
+                          <div className="flex items-center space-x-3">
+                            <Download className="w-4 h-4" />
+                            <span>Export</span>
+                          </div>
+                          <span className="text-xs">›</span>
                         </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowIndividualMoveDialog(meeting);
-                            setShowMeetingMenu(null);
+                        
+                        {/* Export submenu */}
+                        <div 
+                          className="absolute left-full top-0 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover/export:opacity-100 group-hover/export:visible transition-all duration-200"
+                          style={{ 
+                            zIndex: 10000,
+                            marginLeft: '4px'
                           }}
-                          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
-                          <Move className="w-4 h-4" />
-                          <span>Move to Folder</span>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            shareIndividualMeeting(meetingId);
-                            setShowMeetingMenu(null);
-                          }}
-                          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          <Share2 className="w-4 h-4" />
-                          <span>Share</span>
-                        </button>
-
-                        <div className="relative group/export">
-                          <button
-                            className="w-full flex items-center justify-between px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                          >
-                            <div className="flex items-center space-x-3">
-                              <Download className="w-4 h-4" />
-                              <span>Export</span>
-                            </div>
-                            <span className="text-xs">›</span>
-                          </button>
-                          
-                          {/* Export submenu - positioned to avoid clipping */}
-                          <div 
-                            className="absolute left-full top-0 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover/export:opacity-100 group-hover/export:visible transition-all duration-200"
-                            style={{ 
-                              zIndex: 10000,
-                              marginLeft: '4px' // Small gap between menus
-                            }}
-                          >
-                            <div className="py-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  downloadIndividualReport(meetingId, 'pdf');
-                                  setShowMeetingMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                              >
-                                PDF
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  downloadIndividualReport(meetingId, 'json');
-                                  setShowMeetingMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                              >
-                                JSON
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  downloadIndividualReport(meetingId, 'txt');
-                                  setShowMeetingMenu(null);
-                                }}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                              >
-                                TXT
-                              </button>
-                            </div>
+                          <div className="py-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadIndividualReport(meetingId, 'pdf');
+                                setShowMeetingMenu(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              PDF
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadIndividualReport(meetingId, 'json');
+                                setShowMeetingMenu(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              JSON
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                downloadIndividualReport(meetingId, 'txt');
+                                setShowMeetingMenu(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                              TXT
+                            </button>
                           </div>
                         </div>
-
-                        <hr className="my-2 border-gray-200 dark:border-gray-700" />
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowIndividualDeleteConfirm(meeting);
-                            setShowMeetingMenu(null);
-                          }}
-                          className="w-full flex items-center space-x-3 px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Delete</span>
-                        </button>
                       </div>
+
+                      <hr className="my-2 border-gray-200 dark:border-gray-700" />
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowIndividualDeleteConfirm(meeting);
+                          setShowMeetingMenu(null);
+                        }}
+                        className="w-full flex items-center space-x-3 px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Delete</span>
+                      </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -613,6 +626,9 @@ const AllMeetings = ({ onMeetingClick }) => {
     );
   }
 
+  // Apply folder color sorting if needed
+  const sortedMeetings = sortMeetingsByFolderColor(meetings);
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       {/* Header */}
@@ -627,7 +643,7 @@ const AllMeetings = ({ onMeetingClick }) => {
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* Select All button */}
+          {/* Select All button - fixed dark theme visibility */}
           <button
             onClick={toggleSelectAll}
             className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
@@ -635,22 +651,30 @@ const AllMeetings = ({ onMeetingClick }) => {
             {selectAll ? (
               <CheckSquare className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             ) : (
-              <Square className="w-4 h-4" />
+              <Square className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             )}
-            <span className="text-sm">Select All</span>
+            <span className="text-sm text-gray-700 dark:text-gray-300">Select All</span>
           </button>
 
-          {/* View Mode Toggle */}
+          {/* View Mode Toggle - fixed dark theme visibility */}
           <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded ${viewMode === 'grid' ? 'bg-white dark:bg-gray-600 shadow' : ''}`}
+              className={`p-2 rounded ${
+                viewMode === 'grid' 
+                  ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' 
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
             >
               <Grid className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`p-2 rounded ${viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow' : ''}`}
+              className={`p-2 rounded ${
+                viewMode === 'list' 
+                  ? 'bg-white dark:bg-gray-600 shadow text-gray-900 dark:text-white' 
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
             >
               <List className="w-4 h-4" />
             </button>
@@ -704,11 +728,13 @@ const AllMeetings = ({ onMeetingClick }) => {
             <option value="created_at">Date Created</option>
             <option value="title">Title</option>
             <option value="status">Status</option>
+            <option value="folder_color">Folder Color</option>
           </select>
           
+          {/* Sort order button - fixed dark theme visibility */}
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+            className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
           >
             {sortOrder === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
           </button>
@@ -762,7 +788,7 @@ const AllMeetings = ({ onMeetingClick }) => {
       )}
 
       {/* Meetings Display */}
-      {meetings.length === 0 ? (
+      {sortedMeetings.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
@@ -777,16 +803,13 @@ const AllMeetings = ({ onMeetingClick }) => {
           {viewMode === 'grid' ? (
             <div 
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              style={{ 
-                // Ensure grid container allows overflow for dropdowns
-                overflow: 'visible' 
-              }}
+              style={{ overflow: 'visible' }}
             >
-              {meetings.map(renderMeetingCard)}
+              {sortedMeetings.map(renderMeetingCard)}
             </div>
           ) : (
             <div className="space-y-3" style={{ overflow: 'visible' }}>
-              {meetings.map((meeting) => {
+              {sortedMeetings.map((meeting) => {
                 const folder = folders.find(f => f.id === meeting.folder_id);
                 const folderColor = folder?.color || '#3B82F6';
                 const isSelected = selectedMeetings.includes(meeting.id || meeting._id);
@@ -800,7 +823,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                     }`}
                     style={{ 
                       borderLeftColor: folderColor,
-                      overflow: 'visible' 
+                      overflow: 'visible'
                     }}
                     onClick={() => onMeetingClick(meetingId)}
                   >
@@ -848,7 +871,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                             <MoreVertical className="w-4 h-4 text-gray-400" />
                           </button>
 
-                          {/* Same dropdown menu as in grid view with improved positioning */}
+                          {/* Same dropdown menu as in grid view */}
                           {showMeetingMenu === meetingId && (
                             <div 
                               className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
@@ -1095,18 +1118,10 @@ const AllMeetings = ({ onMeetingClick }) => {
       {/* Create Folder Modal */}
       {showCreateFolder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-96 max-w-md mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Create New Folder
-              </h3>
-              <button
-                onClick={() => setShowCreateFolder(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Create New Folder
+            </h3>
             
             <div className="space-y-4">
               <div>
@@ -1117,32 +1132,36 @@ const AllMeetings = ({ onMeetingClick }) => {
                   type="text"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter folder name..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  maxLength={50}
                 />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Note: Default folders (Recent, Work, Personal) cannot be renamed or deleted
+                </p>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Color
                 </label>
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                   {colorOptions.map(color => (
                     <button
                       key={color}
-                      onClick={() => setNewFolderColor(color)}
-                      className={`w-8 h-8 rounded-full border-2 transition-all ${
+                      className={`w-8 h-8 rounded-lg border-2 transition-all ${
                         newFolderColor === color 
-                          ? 'border-gray-400 dark:border-gray-300 scale-110' 
-                          : 'border-gray-200 dark:border-gray-600 hover:scale-105'
+                          ? 'border-gray-800 dark:border-white scale-110' 
+                          : 'border-gray-300 dark:border-gray-600 hover:scale-105'
                       }`}
                       style={{ backgroundColor: color }}
+                      onClick={() => setNewFolderColor(color)}
                     />
                   ))}
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3 mt-6">
               <button
                 onClick={() => setShowCreateFolder(false)}
@@ -1155,7 +1174,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                 disabled={!newFolderName.trim()}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white rounded-lg transition-colors"
               >
-                Create
+                Create Folder
               </button>
             </div>
           </div>

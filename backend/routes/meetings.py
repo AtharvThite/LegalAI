@@ -211,6 +211,47 @@ def get_folders():
         
         folders = user.get('folders', [])
         
+        # Ensure default folders exist
+        default_folder_ids = {'recent', 'work', 'personal'}
+        existing_folder_ids = {folder['id'] for folder in folders}
+        
+        if not default_folder_ids.issubset(existing_folder_ids):
+            # Add missing default folders
+            default_folders = [
+                {
+                    'id': 'recent',
+                    'name': 'Recent',
+                    'color': '#3B82F6',
+                    'created_at': datetime.utcnow(),
+                    'is_default': True
+                },
+                {
+                    'id': 'work',
+                    'name': 'Work',
+                    'color': '#10B981',
+                    'created_at': datetime.utcnow(),
+                    'is_default': True
+                },
+                {
+                    'id': 'personal',
+                    'name': 'Personal',
+                    'color': '#F59E0B',
+                    'created_at': datetime.utcnow(),
+                    'is_default': True
+                }
+            ]
+            
+            # Only add folders that don't exist
+            for default_folder in default_folders:
+                if default_folder['id'] not in existing_folder_ids:
+                    folders.append(default_folder)
+            
+            # Update user with new folders
+            db.users.update_one(
+                {'_id': ObjectId(user_id)},
+                {'$set': {'folders': folders}}
+            )
+        
         # Add meeting counts to folders
         for folder in folders:
             count = db.meetings.count_documents({
@@ -263,6 +304,10 @@ def update_folder(folder_id):
     db = get_mongo()
     data = request.json
     
+    # Don't allow editing default folders
+    if folder_id in ['recent', 'work', 'personal']:
+        return jsonify({'error': 'Cannot edit default folders'}), 400
+    
     update_fields = {}
     if 'name' in data:
         update_fields['folders.$.name'] = data['name']
@@ -292,8 +337,8 @@ def delete_folder(folder_id):
     user_id = get_jwt_identity()
     db = get_mongo()
     
-    # Don't allow deleting default folders
-    if folder_id in ['recent', 'work']:
+    # Don't allow deleting default folders 
+    if folder_id in ['recent', 'work', 'personal']:
         return jsonify({'error': 'Cannot delete default folders'}), 400
     
     try:

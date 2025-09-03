@@ -70,6 +70,20 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     }
   };
 
+  // Add default folders definition
+  const defaultFolders = [
+    { id: 'recent', name: 'Recent', color: '#3B82F6', meeting_count: 0 },
+    { id: 'work', name: 'Work', color: '#10B981', meeting_count: 0 },
+    { id: 'personal', name: 'Personal', color: '#F59E0B', meeting_count: 0 }
+  ];
+
+  // Separate default and custom folders
+  const customFolders = folders.filter(folder => 
+    !['recent', 'work', 'personal'].includes(folder.id)
+  );
+
+  const allFolders = [...defaultFolders, ...customFolders];
+
   const fetchMeetings = async (folderId = null) => {
     try {
       const url = folderId ? `/meetings?folder_id=${folderId}` : '/meetings';
@@ -181,6 +195,40 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     setShowMoveDialog(true);
   };
 
+  const renderFolderActions = (folder) => {
+    // Don't show edit/delete actions for default folders
+    if (['recent', 'work', 'personal'].includes(folder.id)) {
+      return null;
+    }
+
+    return (
+      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingFolder(folder.id);
+            setEditFolderName(folder.name);
+            setEditFolderColor(folder.color);
+          }}
+          className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          title="Edit folder"
+        >
+          <Edit className="w-3 h-3" />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDeleteConfirm(folder.id);
+          }}
+          className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          title="Delete folder"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  };
+
   useEffect(() => {
     const loadData = async () => {
       await Promise.all([fetchFolders(), fetchMeetings()]);
@@ -237,138 +285,115 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
             </div>
 
             <div className="space-y-1">
-              {folders.map((folder) => (
+              {allFolders.map((folder) => (
                 <div key={folder.id} className="group">
-                  <div className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                    <button
-                      onClick={() => toggleFolder(folder.id)}
-                      className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-                    >
-                      {expandedFolders.has(folder.id) ? (
-                        <ChevronDown className="w-4 h-4 text-gray-400" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-400" />
-                      )}
-                    </button>
-
-                    {/* Restored original folder icon with color circle */}
-                    <div className="relative">
-                      {expandedFolders.has(folder.id) ? (
-                        <FolderOpen className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                      ) : (
-                        <Folder className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                      )}
-                      {/* Small color circle indicator */}
-                      <div 
-                        className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white dark:border-gray-800"
-                        style={{ backgroundColor: folder.color || '#3B82F6' }}
+                  <div
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                      expandedFolders.has(folder.id)
+                        ? 'bg-gray-100 dark:bg-gray-700'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                    onClick={() => toggleFolder(folder.id)}
+                  >
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      <ChevronRight
+                        className={`w-4 h-4 text-gray-400 transition-transform ${
+                          expandedFolders.has(folder.id) ? 'transform rotate-90' : ''
+                        }`}
                       />
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: folder.color }}
+                      />
+                      
+                      {editingFolder === folder.id && !['recent', 'work', 'personal'].includes(folder.id) ? (
+                        <div className="flex items-center space-x-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={editFolderName}
+                            onChange={(e) => setEditFolderName(e.target.value)}
+                            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                editFolder(folder.id);
+                              } else if (e.key === 'Escape') {
+                                setEditingFolder(null);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <select
+                            value={editFolderColor}
+                            onChange={(e) => setEditFolderColor(e.target.value)}
+                            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            {colorOptions.map(color => (
+                              <option key={color} value={color}>
+                                {color}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => editFolder(folder.id)}
+                            className="p-1 text-green-600 hover:text-green-700 transition-colors"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => setEditingFolder(null)}
+                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                          {folder.name}
+                          {['recent', 'work', 'personal'].includes(folder.id) && (
+                            <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">(default)</span>
+                          )}
+                        </span>
+                      )}
                     </div>
 
-                    {editingFolder === folder.id ? (
-                      <div className="flex-1 flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={editFolderName}
-                          onChange={(e) => setEditFolderName(e.target.value)}
-                          className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          autoFocus
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') editFolder(folder.id);
-                            if (e.key === 'Escape') setEditingFolder(null);
-                          }}
-                        />
-                        <button
-                          onClick={() => editFolder(folder.id)}
-                          className="p-1 text-green-600 hover:text-green-700"
-                        >
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => setEditingFolder(null)}
-                          className="p-1 text-gray-400 hover:text-gray-600"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex-1 flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
-                            {folder.name}
-                          </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                            {getFolderMeetingCount(folder.id)}
-                          </span>
-                        </div>
-
-                        {/* Edit and Delete buttons */}
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 transition-opacity">
-                          {!['recent', 'work'].includes(folder.id) && (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setEditingFolder(folder.id);
-                                  setEditFolderName(folder.name);
-                                  setEditFolderColor(folder.color || '#3B82F6');
-                                }}
-                                className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                title="Edit folder"
-                              >
-                                <Edit className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => setShowDeleteConfirm(folder.id)}
-                                className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                                title="Delete folder"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {getFolderMeetingCount(folder.id)}
+                      </span>
+                      {renderFolderActions(folder)}
+                    </div>
                   </div>
 
-                  {/* Folder meetings */}
+                  {/* Meeting list for expanded folders */}
                   {expandedFolders.has(folder.id) && (
                     <div className="ml-6 mt-1 space-y-1">
-                      {getMeetingsForFolder(folder.id).slice(0, 5).map((meeting) => (
+                      {getMeetingsForFolder(folder.id).map((meeting) => (
                         <div
                           key={meeting.id || meeting._id}
-                          className="group flex items-center space-x-2 p-2 text-left text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700 rounded transition-colors"
+                          className="flex items-center justify-between px-3 py-2 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer group"
+                          onClick={() => onMeetingClick(meeting.id || meeting._id)}
                         >
-                          <div 
-                            className="w-2 h-2 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: folder.color || '#3B82F6' }}
-                          />
+                          <div className="flex items-center space-x-2 flex-1 min-w-0">
+                            <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <span className="text-gray-700 dark:text-gray-300 truncate">
+                              {meeting.title || 'Untitled Meeting'}
+                            </span>
+                          </div>
                           
-                          <button
-                            onClick={() => onMeetingClick(meeting.id || meeting._id)}
-                            className="flex-1 text-left truncate"
-                          >
-                            {meeting.title || 'Untitled Meeting'}
-                          </button>
-
-                          {/* Move button for individual meetings */}
-                          <button
-                            onClick={(e) => handleMoveClick(e, meeting)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200"
-                            title="Move to another folder"
-                          >
-                            <Move className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center space-x-1">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {new Date(meeting.created_at).toLocaleDateString()}
+                            </span>
+                            <button
+                              onClick={(e) => handleMoveClick(e, meeting)}
+                              className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Move meeting"
+                            >
+                              <FolderOpen className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       ))}
-                      {getMeetingsForFolder(folder.id).length > 5 && (
-                        <button
-                          onClick={() => setActiveView('meetings')}
-                          className="w-full text-left text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 ml-4 py-1"
-                        >
-                          View all {getMeetingsForFolder(folder.id).length} meetings
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>
@@ -405,7 +430,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
             </p>
             
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {folders.map(folder => (
+              {allFolders.map(folder => (
                 <button
                   key={folder.id}
                   onClick={() => moveMeeting(selectedMeetingToMove.id || selectedMeetingToMove._id, folder.id)}

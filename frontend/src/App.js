@@ -79,13 +79,13 @@ const AppContent = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       <Header />
-      <div className="flex h-screen pt-20">
+      <div className="flex h-screen">
         <Sidebar 
           activeView={activeView} 
           setActiveView={setActiveView}
           onMeetingClick={handleMeetingClick}
         />
-        <main className="flex-1 overflow-y-auto">{renderContent()}</main>
+        <main className="flex-1 overflow-y-auto pt-20">{renderContent()}</main>
       </div>
     </div>
   );

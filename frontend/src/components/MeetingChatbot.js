@@ -12,6 +12,7 @@ import {
   Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import MarkdownRenderer from './MarkdownRenderer';
 
 const MeetingChatbot = ({ meetingId }) => {
   const [messages, setMessages] = useState([]);
@@ -137,8 +138,25 @@ const MeetingChatbot = ({ meetingId }) => {
     }
   };
 
-  const clearChat = () => {
-    setMessages([]);
+  const clearChat = async () => {
+    try {
+      // Clear local state immediately for better UX
+      setMessages([]);
+      
+      // Also clear from database
+      const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/history`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to clear chat history from database');
+        // Optionally show a toast/notification to user
+      }
+    } catch (error) {
+      console.error('Failed to clear chat history:', error);
+      // Optionally show error to user and reload history
+      loadChatHistory();
+    }
   };
 
   const formatTime = (timestamp) => {
@@ -186,7 +204,7 @@ const MeetingChatbot = ({ meetingId }) => {
         </div>
       </div>
 
-      {/* Suggestions - Fixed text colors for dark mode */}
+      {/* Suggestions */}
       {messages.length === 0 && suggestions.length > 0 && (
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-2 mb-3">
@@ -236,22 +254,37 @@ const MeetingChatbot = ({ meetingId }) => {
               )}
               
               <div
-                className={`max-w-md p-4 rounded-2xl group relative ${
+                className={`max-w-md rounded-2xl group relative ${
                   message.type === 'user'
-                    ? 'bg-blue-500 text-white'
+                    ? 'bg-blue-500 text-white p-4'
                     : message.isError
-                    ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                    ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4'
+                    : 'bg-gray-100 dark:bg-gray-700 p-4'
                 }`}
               >
-                <p className="whitespace-pre-wrap leading-relaxed">
-                  {message.content}
-                </p>
+                {message.type === 'user' ? (
+                  <p className="whitespace-pre-wrap leading-relaxed text-white">
+                    {message.content}
+                  </p>
+                ) : message.isError ? (
+                  <p className="whitespace-pre-wrap leading-relaxed text-red-700 dark:text-red-300">
+                    {message.content}
+                  </p>
+                ) : (
+                  <div className="prose dark:prose-invert prose-sm max-w-none">
+                    <MarkdownRenderer 
+                      content={message.content} 
+                      className="text-gray-900 dark:text-white"
+                    />
+                  </div>
+                )}
                 
                 <div className="flex items-center justify-between mt-2">
                   <span className={`text-xs ${
                     message.type === 'user' 
                       ? 'text-blue-100' 
+                      : message.isError
+                      ? 'text-red-500 dark:text-red-400'
                       : 'text-gray-500 dark:text-gray-400'
                   }`}>
                     {formatTime(message.timestamp)}

@@ -106,6 +106,37 @@ def get_chat_history(meeting_id):
     
     return jsonify(conversations)
 
+@chatbot_bp.route('/<meeting_id>/history', methods=['DELETE'])
+@jwt_required()
+def clear_chat_history(meeting_id):
+    user_id = get_jwt_identity()
+    
+    # Build query based on whether meeting_id is ObjectId or custom ID
+    if is_valid_objectid(meeting_id):
+        query = {
+            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            'user_id': user_id
+        }
+    else:
+        query = {'id': meeting_id, 'user_id': user_id}
+    
+    # Verify meeting ownership
+    meeting = current_app.mongo.db.meetings.find_one(query)
+    
+    if not meeting:
+        return jsonify({'error': 'Meeting not found'}), 404
+    
+    # Delete all conversation history for this meeting and user
+    result = current_app.mongo.db.conversations.delete_many({
+        'meeting_id': meeting_id,
+        'user_id': user_id
+    })
+    
+    return jsonify({
+        'message': 'Chat history cleared successfully',
+        'deleted_count': result.deleted_count
+    })
+
 @chatbot_bp.route('/<meeting_id>/suggestions', methods=['GET'])
 @jwt_required()
 def get_question_suggestions(meeting_id):

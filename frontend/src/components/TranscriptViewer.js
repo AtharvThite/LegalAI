@@ -5,7 +5,6 @@ import {
   Play, 
   Pause, 
   Volume2, 
-  Download, 
   Copy, 
   Check,
   User,
@@ -117,18 +116,14 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
             </p>
           </div>
 
+          {/* Only keep Copy button - Export is handled by the main export button above */}
           <div className="flex items-center space-x-3">
             <button
               onClick={handleCopyTranscript}
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors"
             >
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               <span className="text-sm">{copied ? 'Copied!' : 'Copy'}</span>
-            </button>
-
-            <button className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
-              <Download className="w-4 h-4" />
-              <span className="text-sm">Export</span>
             </button>
           </div>
         </div>
