@@ -55,9 +55,9 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
     try {
       setLoading(true);
       const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`);
+      const data = await response.json();
       
       if (response.ok) {
-        const data = await response.json();
         setMeeting(data);
         setEditForm({
           title: data.title || '',
@@ -65,11 +65,10 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
           folder_id: data.folder_id || 'recent'
         });
       } else {
-        setError('Failed to load meeting details');
+        setError(data.error || 'Failed to fetch meeting details');
       }
-    } catch (error) {
-      console.error('Error fetching meeting:', error);
-      setError('Failed to load meeting details');
+    } catch (err) {
+      setError('Network error occurred');
     } finally {
       setLoading(false);
     }
@@ -513,7 +512,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
           )}
           
           {activeTab === 'knowledge-graph' && (
-            <KnowledgeGraph graphData={meeting.knowledge_graph} />
+            <KnowledgeGraphView meeting={meeting} meetingId={meetingId} />
           )}
           
           {activeTab === 'chat' && (
@@ -835,5 +834,123 @@ const formatDateIST = (dateValue) => {
   } catch (error) {
     console.error('Error formatting date to IST:', error);
     return date.toLocaleString();
+  }
+};
+
+// Add this component for the Knowledge Graph tab
+const KnowledgeGraphView = ({ meeting, meetingId }) => {
+  const [graphData, setGraphData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { makeAuthenticatedRequest } = useAuth();
+
+  const fetchKnowledgeGraph = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await makeAuthenticatedRequest(`/knowledge-graph/${meetingId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setGraphData(data.graph);
+      } else if (response.status === 404) {
+        // Try to generate knowledge graph
+        await generateKnowledgeGraph();
+      } else {
+        throw new Error('Failed to fetch knowledge graph');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateKnowledgeGraph = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await makeAuthenticatedRequest(`/knowledge-graph/${meetingId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          transcript: meeting.transcript
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setGraphData(data.graph);
+      } else {
+        throw new Error('Failed to generate knowledge graph');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (meetingId && meeting) {
+      fetchKnowledgeGraph();
+    }
+  }, [meetingId, meeting]);
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
+        <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-gray-600 dark:text-gray-400">
+          Generating knowledge graph...
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-8">
+        <div className="text-center">
+          <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            Failed to Load Knowledge Graph
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            {error}
+          </p>
+          <button
+            onClick={generateKnowledgeGraph}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <KnowledgeGraph graphData={graphData} />;
+};
+
+// Update the renderContent function to include the new component:
+const renderContent = () => {
+  switch (activeTab) {
+    case 'transcript':
+      return <TranscriptViewer transcript={meeting.transcript} meetingId={meetingId} />;
+    case 'summary':
+      return <SummaryView summary={meeting.summary} meetingId={meetingId} />;
+    case 'knowledge-graph':
+      return <KnowledgeGraphView meeting={meeting} meetingId={meetingId} />;
+    case 'chat':
+      return <MeetingChatbot meetingId={meetingId} />;
+    case 'insights':
+      return <InsightsView meeting={meeting} />;
+    default:
+      return <TranscriptViewer transcript={meeting.transcript} meetingId={meetingId} />;
   }
 };

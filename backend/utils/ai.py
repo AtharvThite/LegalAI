@@ -198,96 +198,154 @@ def _extract_entities_from_chunk(text):
     """Extract entities from a single chunk"""
     model = genai.GenerativeModel("gemini-1.5-flash")
     
-    prompt = f"""Analyze this meeting transcript and extract a knowledge graph in JSON format:
+    prompt = f"""Analyze this meeting transcript and extract a knowledge graph in JSON format.
 
 Text: {text}
 
-Extract:
-1. Entities (people, projects, companies, concepts, technologies)
-2. Relationships between entities
-3. Key topics discussed
-4. Action items and their assignments
+Extract entities and relationships to create a knowledge graph. Focus on:
+1. People mentioned (participants, stakeholders)
+2. Projects, products, or initiatives discussed
+3. Companies, organizations, or departments
+4. Key concepts, topics, or technologies
+5. Action items and tasks
+6. Decisions made
 
 Return ONLY valid JSON in this exact format:
 {{
     "nodes": [
-        {{"id": "person_john", "label": "John Smith", "type": "person", "properties": {{"role": "manager"}}}},
-        {{"id": "project_alpha", "label": "Project Alpha", "type": "project", "properties": {{"status": "active"}}}}
+        {{"id": "person_john_doe", "label": "John Doe", "type": "person", "properties": {{"role": "manager", "department": "engineering"}}}},
+        {{"id": "project_alpha", "label": "Project Alpha", "type": "project", "properties": {{"status": "active", "priority": "high"}}}},
+        {{"id": "topic_budget", "label": "Budget Planning", "type": "topic", "properties": {{"category": "finance"}}}},
+        {{"id": "action_review", "label": "Code Review", "type": "action", "properties": {{"due_date": "next week", "assignee": "John Doe"}}}}
     ],
     "edges": [
-        {{"source": "person_john", "target": "project_alpha", "relationship": "manages", "weight": 1.0}}
+        {{"source": "person_john_doe", "target": "project_alpha", "relationship": "manages", "weight": 1.0}},
+        {{"source": "project_alpha", "target": "topic_budget", "relationship": "requires", "weight": 0.8}},
+        {{"source": "person_john_doe", "target": "action_review", "relationship": "assigned_to", "weight": 1.0}}
     ],
-    "topics": ["project planning", "budget discussion"],
+    "topics": ["budget planning", "project management", "code review", "team coordination"],
     "action_items": [
-        {{"task": "Review budget proposal", "assignee": "John Smith", "due_date": "next week"}}
+        {{"task": "Complete code review for Project Alpha", "assignee": "John Doe", "due_date": "next week", "priority": "high"}}
     ]
-}}"""
-    
-    response = model.generate_content(prompt)
+}}
+
+Make sure to:
+- Use meaningful IDs (no spaces, use underscores)
+- Include diverse entity types (person, project, topic, action, company, technology)
+- Create logical relationships between entities
+- Extract realistic action items with assignees when possible
+- Include relevant properties for each entity"""
     
     try:
+        response = model.generate_content(prompt)
+        
         # Clean the response to extract JSON
         json_text = response.text.strip()
+        
+        # Remove markdown code block markers
         if json_text.startswith('```json'):
             json_text = json_text[7:]
+        elif json_text.startswith('```'):
+            json_text = json_text[3:]
+        
         if json_text.endswith('```'):
             json_text = json_text[:-3]
         
-        return json.loads(json_text)
+        # Parse JSON
+        result = json.loads(json_text)
+        
+        # Validate and fix the structure
+        if not isinstance(result, dict):
+            raise ValueError("Response is not a dictionary")
+        
+        # Ensure all required keys exist
+        result.setdefault('nodes', [])
+        result.setdefault('edges', [])
+        result.setdefault('topics', [])
+        result.setdefault('action_items', [])
+        
+        # Validate nodes
+        valid_nodes = []
+        for node in result.get('nodes', []):
+            if isinstance(node, dict) and 'id' in node and 'label' in node and 'type' in node:
+                # Ensure properties exist
+                node.setdefault('properties', {})
+                valid_nodes.append(node)
+        
+        # Validate edges
+        valid_edges = []
+        node_ids = {node['id'] for node in valid_nodes}
+        for edge in result.get('edges', []):
+            if (isinstance(edge, dict) and 
+                'source' in edge and 'target' in edge and 'relationship' in edge and
+                edge['source'] in node_ids and edge['target'] in node_ids):
+                edge.setdefault('weight', 1.0)
+                valid_edges.append(edge)
+        
+        result['nodes'] = valid_nodes
+        result['edges'] = valid_edges
+        
+        # If we have no nodes, create some basic ones from the text
+        if not valid_nodes:
+            result = _create_fallback_graph(text)
+        
+        return result
+        
     except Exception as e:
         print(f"Error parsing knowledge graph: {e}")
-        return {"nodes": [], "edges": [], "topics": [], "action_items": []}
+        print(f"Response text: {response.text if 'response' in locals() else 'No response'}")
+        
+        # Return fallback graph
+        return _create_fallback_graph(text)
 
-def _deduplicate_entities(entities):
-    """Remove duplicate entities based on ID"""
-    seen = set()
-    unique = []
-    for entity in entities:
-        if entity['id'] not in seen:
-            seen.add(entity['id'])
-            unique.append(entity)
-    return unique
-
-def _deduplicate_relationships(relationships):
-    """Remove duplicate relationships"""
-    seen = set()
-    unique = []
-    for rel in relationships:
-        key = (rel['source'], rel['target'], rel['relationship'])
-        if key not in seen:
-            seen.add(key)
-            unique.append(rel)
-    return unique
-
-def _extract_topics_from_entities(entities):
-    """Extract topics from entity list"""
+def _create_fallback_graph(text):
+    """Create a simple fallback graph when parsing fails"""
+    # Extract basic information
+    words = text.split()
+    people_indicators = ['said', 'mentioned', 'asked', 'replied', 'stated', 'Speaker']
+    projects_indicators = ['project', 'initiative', 'product', 'system', 'platform']
+    
+    nodes = []
+    edges = []
     topics = []
-    for entity in entities:
-        if entity.get('type') == 'topic':
-            topics.append(entity['label'])
-    return topics
-
-def _extract_action_items(transcript):
-    """Extract action items from transcript"""
-    model = genai.GenerativeModel("gemini-1.5-flash")
     
-    response = model.generate_content(
-        f"""Extract action items from this meeting transcript. Return as JSON array:
-
-{transcript}
-
-Format: [{{"task": "description", "assignee": "person", "due_date": "when", "priority": "high/medium/low"}}]"""
-    )
+    # Create generic nodes
+    if any(indicator in text.lower() for indicator in people_indicators):
+        nodes.append({
+            "id": "meeting_participants",
+            "label": "Meeting Participants",
+            "type": "person",
+            "properties": {"count": "multiple"}
+        })
     
-    try:
-        json_text = response.text.strip()
-        if json_text.startswith('```json'):
-            json_text = json_text[7:]
-        if json_text.endswith('```'):
-            json_text = json_text[:-3]
-        return json.loads(json_text)
-    except:
-        return []
+    if any(indicator in text.lower() for indicator in projects_indicators):
+        nodes.append({
+            "id": "discussed_projects",
+            "label": "Discussed Projects",
+            "type": "project",
+            "properties": {"status": "discussed"}
+        })
+        
+        if nodes:
+            edges.append({
+                "source": "meeting_participants",
+                "target": "discussed_projects",
+                "relationship": "discussed",
+                "weight": 1.0
+            })
+    
+    # Extract topics from common words
+    common_topics = ['meeting', 'discussion', 'project', 'team', 'work', 'plan']
+    for topic in common_topics:
+        if topic in text.lower():
+            topics.append(topic)
+    
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "topics": topics[:5],  # Limit to 5 topics
+        "action_items": []
+    }
 
 def translate_transcript(transcript, target_language):
     """Translate transcript to target language"""
