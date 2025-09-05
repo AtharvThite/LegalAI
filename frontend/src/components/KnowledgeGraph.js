@@ -7,6 +7,7 @@ const KnowledgeGraph = ({ graphData, onNodeClick }) => {
   const [network, setNetwork] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeType, setActiveType] = useState('all');
   const { isDarkMode } = useTheme(); 
 
   const getNodeIcon = (type) => {
@@ -213,6 +214,7 @@ const KnowledgeGraph = ({ graphData, onNodeClick }) => {
   }, [network]);
 
   const handleFilterByType = (type) => {
+    setActiveType(type);
     if (!network || !graphData) return;
 
     try {
@@ -378,26 +380,37 @@ const KnowledgeGraph = ({ graphData, onNodeClick }) => {
             onClick={() => handleFilterByType('all')}
             className={`px-3 py-1.5 text-xs font-medium border rounded-full shadow-sm transition-all duration-200
               ${isDarkMode
-                ? 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                ? activeType === 'all'
+                  ? 'bg-blue-700 text-white border-blue-500'
+                  : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'
+                : activeType === 'all'
+                  ? 'bg-blue-100 text-blue-700 border-blue-500'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }`}
           >
             All ({graphData.nodes.length})
           </button>
           {nodeTypes.map(type => {
             const count = graphData.nodes.filter(n => n.type === type).length;
+            const isActive = activeType === type;
             return (
               <button
                 key={type}
                 onClick={() => handleFilterByType(type)}
                 className={`px-3 py-1.5 text-xs font-medium border rounded-full shadow-sm transition-all duration-200 capitalize
                   ${isDarkMode
-                    ? 'bg-gray-800 text-gray-100 hover:bg-gray-700'
-                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                    ? isActive
+                      ? 'bg-blue-700 text-white border-blue-500'
+                      : 'bg-gray-800 text-gray-100 border-gray-600 hover:bg-gray-700'
+                    : isActive
+                      ? 'bg-blue-100 text-blue-700 border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                   }`}
                 style={{
                   borderColor: getNodeColor(type).border,
-                  color: getNodeColor(type).background
+                  color: isActive
+                    ? (isDarkMode ? '#fff' : getNodeColor(type).background)
+                    : getNodeColor(type).background
                 }}
               >
                 {getNodeIcon(type)} {type} ({count})
