@@ -284,7 +284,19 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
   };
 
   useEffect(() => {
-    fetchFolders();
+    const initializeSidebar = async () => {
+      setLoading(true);
+      try {
+        await fetchFolders();
+        await fetchMeetings();
+      } catch (error) {
+        console.error('Failed to initialize sidebar:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeSidebar();
   }, []);
 
   // Add this new function to handle meeting click with hover effect
