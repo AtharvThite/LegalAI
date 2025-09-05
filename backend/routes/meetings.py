@@ -82,6 +82,27 @@ def get_meeting(meeting_id):
     
     meeting['_id'] = str(meeting['_id'])
     
+    # Ensure consistent datetime handling
+    def format_datetime(dt):
+        if dt is None:
+            return None
+        if isinstance(dt, datetime):
+            return dt.isoformat() + 'Z'  # Add Z for UTC timezone
+        elif isinstance(dt, str):
+            # Already formatted
+            return dt
+        else:
+            # Try to convert to datetime first
+            try:
+                return datetime.fromisoformat(str(dt)).isoformat() + 'Z'
+            except:
+                return str(dt)
+    
+    # Format all datetime fields consistently
+    meeting['created_at'] = format_datetime(meeting.get('created_at'))
+    meeting['updated_at'] = format_datetime(meeting.get('updated_at'))
+    meeting['ended_at'] = format_datetime(meeting.get('ended_at'))
+    
     # Get additional data - use the custom ID if available, otherwise use ObjectId
     search_id = meeting.get('id', str(meeting['_id']))
     transcript = db.transcriptions.find_one({'meeting_id': search_id})
@@ -101,6 +122,8 @@ def create_meeting():
     db = get_mongo()
     data = request.json
     
+    now = datetime.utcnow()
+    
     meeting_data = {
         'id': str(uuid.uuid4()),
         'user_id': user_id,
@@ -109,14 +132,20 @@ def create_meeting():
         'folder_id': data.get('folder_id', 'recent'),
         'language': data.get('language', 'en-US'),
         'status': data.get('status', 'draft'),
-        'created_at': datetime.utcnow(),
-        'updated_at': datetime.utcnow(),
+        'created_at': now,
+        'updated_at': now,
         'participants': data.get('participants', []),
-        'tags': data.get('tags', [])
+        'tags': data.get('tags', []),
+        'ended_at': None  # Initially None
     }
     
     result = db.meetings.insert_one(meeting_data)
     meeting_data['_id'] = str(result.inserted_id)
+    
+    # Format datetime objects consistently for JSON response
+    meeting_data['created_at'] = now.isoformat() + 'Z'
+    meeting_data['updated_at'] = now.isoformat() + 'Z'
+    meeting_data['ended_at'] = None
     
     return jsonify(meeting_data), 201
 

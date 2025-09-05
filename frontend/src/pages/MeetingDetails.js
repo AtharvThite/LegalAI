@@ -140,17 +140,82 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
     }
   };
 
+  // Add this helper function at the top level
+  const parseDateTime = (dateValue) => {
+    if (!dateValue) return null;
+    
+    try {
+      let date;
+      
+      // Handle different date formats from MongoDB
+      if (typeof dateValue === 'string') {
+        // Handle ISO strings with or without timezone
+        date = new Date(dateValue);
+      } else if (dateValue.$date) {
+        // Handle MongoDB $date format
+        if (typeof dateValue.$date === 'string') {
+          date = new Date(dateValue.$date);
+        } else {
+          date = new Date(dateValue.$date);
+        }
+      } else if (typeof dateValue === 'object' && dateValue.getTime) {
+        // Already a Date object
+        date = dateValue;
+      } else {
+        date = new Date(dateValue);
+      }
+      
+      // Validate the date
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateValue);
+        return null;
+      }
+      
+      return date;
+    } catch (error) {
+      console.error('Error parsing date:', error, dateValue);
+      return null;
+    }
+  };
+
+  // Update the formatDuration function
   const formatDuration = () => {
-    if (!meeting.created_at || !meeting.ended_at) return 'N/A';
+    if (!meeting) return 'N/A';
     
-    const start = new Date(meeting.created_at);
-    const end = new Date(meeting.ended_at);
-    const diff = end - start;
+    const createdAt = parseDateTime(meeting.created_at);
+    const endedAt = parseDateTime(meeting.ended_at);
     
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (!createdAt) {
+      console.warn('No valid created_at date found:', meeting.created_at);
+      return 'N/A';
+    }
     
-    return `${hours}h ${minutes}m`;
+    let endTime;
+    if (endedAt) {
+      endTime = endedAt;
+    } else if (meeting.status === 'completed') {
+      // If meeting is completed but no end time, estimate based on typical meeting length
+      endTime = new Date(createdAt.getTime() + (60 * 60 * 1000)); // Add 1 hour as default
+    } else {
+      return 'Ongoing';
+    }
+    
+    const durationMs = endTime.getTime() - createdAt.getTime();
+    
+    if (durationMs <= 0) {
+      console.warn('Invalid duration calculated:', { createdAt, endTime, durationMs });
+      return 'N/A';
+    }
+    
+    const totalMinutes = Math.floor(durationMs / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
+    }
   };
 
   const getStatusColor = (status) => {
@@ -364,7 +429,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Date</p>
                   <p className="font-medium text-gray-900 dark:text-white">
-                    {new Date(meeting.created_at).toLocaleDateString()}
+                    {formatDate(meeting.created_at)}
                   </p>
                 </div>
               </div>
@@ -716,3 +781,59 @@ const InsightsView = ({ meeting }) => {
 };
 
 export default MeetingDetails;
+
+// Also add a helper function for formatting dates
+const formatDate = (dateValue) => {
+  if (!dateValue) return 'N/A';
+  
+  try {
+    let date;
+    
+    if (typeof dateValue === 'string') {
+      date = new Date(dateValue);
+    } else if (dateValue.$date) {
+      date = new Date(dateValue.$date);
+    } else {
+      date = new Date(dateValue);
+    }
+    
+    if (isNaN(date.getTime())) {
+      return 'N/A';
+    }
+    
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'N/A';
+  }
+};
+
+// Add IST formatting function
+const formatDateIST = (dateValue) => {
+  const date = parseDateTime(dateValue);
+  if (!date) return 'Invalid Date';
+  
+  try {
+    // Convert to IST (UTC+5:30)
+    const options = {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    };
+    
+    return date.toLocaleString('en-IN', options);
+  } catch (error) {
+    console.error('Error formatting date to IST:', error);
+    return date.toLocaleString();
+  }
+};

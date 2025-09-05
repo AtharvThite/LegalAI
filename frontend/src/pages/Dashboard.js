@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Clock, Users, Globe, TrendingUp, Calendar, Zap, Activity } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-const Dashboard = () => {
+const Dashboard = ({ onNavigate, onMeetingClick }) => {
+  const [recentMeetings, setRecentMeetings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { makeAuthenticatedRequest } = useAuth();
+
   const stats = [
     { label: 'Total Meetings', value: '24', icon: FileText, color: 'blue', change: '+12%' },
     { label: 'Hours Recorded', value: '18.5', icon: Clock, color: 'green', change: '+8%' },
@@ -15,6 +20,63 @@ const Dashboard = () => {
     { title: 'Project Review summary generated', time: '1 day ago', type: 'success', icon: Activity },
     { title: 'Weekly report exported', time: '2 days ago', type: 'info', icon: TrendingUp },
   ];
+
+  // Add IST date formatting
+  const formatDateIST = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    
+    try {
+      let date;
+      
+      // Handle different date formats
+      if (typeof dateValue === 'string') {
+        // Remove 'Z' if present and parse
+        const cleanDateString = dateValue.replace('Z', '');
+        date = new Date(cleanDateString);
+      } else if (dateValue instanceof Date) {
+        date = dateValue;
+      } else {
+        return 'N/A';
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateValue);
+        return 'N/A';
+      }
+      
+      // Format to IST
+      const options = {
+        timeZone: 'Asia/Kolkata',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      };
+      
+      return date.toLocaleString('en-IN', options);
+    } catch (error) {
+      console.error('Error formatting date:', error, 'Input:', dateValue);
+      return 'N/A';
+    }
+  };
+
+  useEffect(() => {
+    const fetchRecentMeetings = async () => {
+      try {
+        const response = await makeAuthenticatedRequest('/meetings?limit=5');
+        const data = await response.json();
+        setRecentMeetings(data.meetings || []);
+      } catch (error) {
+        console.error('Error fetching recent meetings:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecentMeetings();
+  }, [makeAuthenticatedRequest]);
 
   return (
     <div className="p-6 space-y-8 animate-fade-in">
@@ -69,39 +131,63 @@ const Dashboard = () => {
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Recent Activity
+                Recent Meetings
               </h3>
-              <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
+              <button 
+                onClick={() => onNavigate('meetings')}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+              >
                 View All
               </button>
             </div>
           </div>
           <div className="p-6">
-            <div className="space-y-4">
-              {recentActivities.map((activity, index) => (
-                <div key={index} className="flex items-start space-x-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors">
-                  <div className={`p-2 rounded-lg ${
-                    activity.type === 'success' 
-                      ? 'bg-green-100 dark:bg-green-900' 
-                      : 'bg-blue-100 dark:bg-blue-900'
-                  }`}>
-                    <activity.icon className={`w-4 h-4 ${
-                      activity.type === 'success' 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : 'text-blue-600 dark:text-blue-400'
-                    }`} />
+            {loading ? (
+              <div className="space-y-4">
+                {[1,2,3].map(i => (
+                  <div key={i} className="animate-pulse flex items-center space-x-4 p-4">
+                    <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+                      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {activity.title}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {activity.time}
-                    </p>
+                ))}
+              </div>
+            ) : recentMeetings.length > 0 ? (
+              <div className="space-y-4">
+                {recentMeetings.map((meeting) => (
+                  <div 
+                    key={meeting.id} 
+                    onClick={() => onMeetingClick(meeting.id)}
+                    className="flex items-start space-x-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors cursor-pointer group"
+                  >
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                      <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                        {meeting.title || 'Untitled Meeting'}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {formatDateIST(meeting.created_at)} • {meeting.status}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600 dark:text-gray-400">No meetings yet</p>
+                <button 
+                  onClick={() => onNavigate('new-meeting')}
+                  className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                >
+                  Create your first meeting
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -112,16 +198,22 @@ const Dashboard = () => {
               Quick Actions
             </h3>
             <div className="space-y-3">
-              <button className="w-full p-3 text-left bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors">
+              <button 
+                onClick={() => onNavigate('new-meeting')}
+                className="w-full p-3 text-left bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
+              >
                 <div className="flex items-center space-x-3">
                   <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Start New Meeting</span>
                 </div>
               </button>
-              <button className="w-full p-3 text-left bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors">
+              <button 
+                onClick={() => onNavigate('meetings')}
+                className="w-full p-3 text-left bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors"
+              >
                 <div className="flex items-center space-x-3">
                   <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  <span className="text-sm font-medium text-purple-900 dark:text-purple-100">View Analytics</span>
+                  <span className="text-sm font-medium text-purple-900 dark:text-purple-100">View All Meetings</span>
                 </div>
               </button>
               <button className="w-full p-3 text-left bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors">

@@ -285,15 +285,115 @@ const AllMeetings = ({ onMeetingClick }) => {
     }
   };
 
-  const formatDuration = (meeting) => {
-    if (meeting.ended_at && meeting.created_at) {
-      const start = new Date(meeting.created_at);
-      const end = new Date(meeting.ended_at);
-      const diffMs = end - start;
-      const diffMins = Math.round(diffMs / (1000 * 60));
-      return `${diffMins}m`;
+  // Add the same helper functions
+  const parseDateTime = (dateValue) => {
+    if (!dateValue) return null;
+    
+    try {
+      let date;
+      
+      if (typeof dateValue === 'string') {
+        date = new Date(dateValue);
+      } else if (dateValue.$date) {
+        if (typeof dateValue.$date === 'string') {
+          date = new Date(dateValue.$date);
+        } else {
+          date = new Date(dateValue.$date);
+        }
+      } else if (typeof dateValue === 'object' && dateValue.getTime) {
+        date = dateValue;
+      } else {
+        date = new Date(dateValue);
+      }
+      
+      if (isNaN(date.getTime())) {
+        return null;
+      }
+      
+      return date;
+    } catch (error) {
+      console.error('Error parsing date:', error);
+      return null;
     }
-    return '0m';
+  };
+
+  // Update formatDuration function
+  const formatDuration = (meeting) => {
+    if (!meeting) return 'N/A';
+    
+    const createdAt = parseDateTime(meeting.created_at);
+    const endedAt = parseDateTime(meeting.ended_at);
+    
+    if (!createdAt) {
+      return 'N/A';
+    }
+    
+    let endTime;
+    if (endedAt) {
+      endTime = endedAt;
+    } else if (meeting.status === 'completed') {
+      // Default to 1 hour if no end time but marked as completed
+      endTime = new Date(createdAt.getTime() + (60 * 60 * 1000));
+    } else {
+      return 'Ongoing';
+    }
+    
+    const durationMs = endTime.getTime() - createdAt.getTime();
+    
+    if (durationMs <= 0) {
+      return 'N/A';
+    }
+    
+    const totalMinutes = Math.floor(durationMs / (1000 * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${minutes}m`;
+    }
+  };
+
+  // Replace the existing formatDisplayDate function with this corrected version:
+  const formatDisplayDate = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    
+    try {
+      let date;
+      
+      // Handle different date formats
+      if (typeof dateValue === 'string') {
+        // Remove 'Z' if present and parse
+        const cleanDateString = dateValue.replace('Z', '');
+        date = new Date(cleanDateString);
+      } else if (dateValue instanceof Date) {
+        date = dateValue;
+      } else {
+        return 'N/A';
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateValue);
+        return 'N/A';
+      }
+      
+      // Format to IST
+      const options = {
+        timeZone: 'Asia/Kolkata',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      };
+      
+      return date.toLocaleString('en-IN', options);
+    } catch (error) {
+      console.error('Error formatting date:', error, 'Input:', dateValue);
+      return 'N/A';
+    }
   };
 
   // Sort meetings by folder color when sortBy is 'folder_color'

@@ -229,34 +229,94 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     );
   };
 
+  const renderMeetingActions = (meeting) => {
+    return (
+      <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => handleMoveClick(e, meeting)}
+          className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          title="Move meeting"
+        >
+          <Move className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  };
+
+  const formatDateIST = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    
+    try {
+      let date;
+      
+      // Handle different date formats
+      if (typeof dateValue === 'string') {
+        // Remove 'Z' if present and parse
+        const cleanDateString = dateValue.replace('Z', '');
+        date = new Date(cleanDateString);
+      } else if (dateValue instanceof Date) {
+        date = dateValue;
+      } else {
+        return 'N/A';
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateValue);
+        return 'N/A';
+      }
+      
+      // Format to IST
+      const options = {
+        timeZone: 'Asia/Kolkata',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      };
+      
+      return date.toLocaleString('en-IN', options);
+    } catch (error) {
+      console.error('Error formatting date:', error, 'Input:', dateValue);
+      return 'N/A';
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      await Promise.all([fetchFolders(), fetchMeetings()]);
-      setLoading(false);
-    };
-    loadData();
+    fetchFolders();
   }, []);
+
+  // Add this new function to handle meeting click with hover effect
+  const handleMeetingClick = (meetingId, tab = 'transcript') => {
+    onMeetingClick(meetingId, tab);
+  };
 
   if (loading) {
     return (
-      <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 h-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 h-full flex flex-col">
-      {/* Navigation Menu - Fixed, non-scrollable */}
-      <div className="flex-shrink-0 p-6 border-b border-gray-200 dark:border-gray-700">
+    <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Navigation</h2>
+      </div>
+
+      {/* Menu Items */}
+      <div className="p-4">
         <nav className="space-y-2">
           {menuItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveView(item.id)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200 ${
+              className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-200 ${
                 activeView === item.id
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
@@ -267,142 +327,78 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
         </nav>
       </div>
 
-      {/* Folders Section - Scrollable with proper boundaries */}
-      <div className="flex-1 min-h-0">
-        <div className="h-full overflow-y-auto overscroll-contain">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">
-                Folders
-              </h3>
+      {/* Folders */}
+      <div className="flex-1 overflow-y-auto px-4">
+        <div className="space-y-1">
+          {allFolders.map((folder) => (
+            <div key={folder.id}>
               <button
-                onClick={() => setShowCreateFolder(true)}
-                className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                title="Create folder"
+                onClick={() => toggleFolder(folder.id)}
+                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors group"
               >
-                <FolderPlus className="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" />
-              </button>
-            </div>
-
-            <div className="space-y-1">
-              {allFolders.map((folder) => (
-                <div key={folder.id} className="group">
+                <div className="flex items-center space-x-2">
                   <div
-                    className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                      expandedFolders.has(folder.id)
-                        ? 'bg-gray-100 dark:bg-gray-700'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}
-                    onClick={() => toggleFolder(folder.id)}
-                  >
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <ChevronRight
-                        className={`w-4 h-4 text-gray-400 transition-transform ${
-                          expandedFolders.has(folder.id) ? 'transform rotate-90' : ''
-                        }`}
-                      />
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: folder.color }}
-                      />
-                      
-                      {editingFolder === folder.id && !['recent', 'work', 'personal'].includes(folder.id) ? (
-                        <div className="flex items-center space-x-2 flex-1" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="text"
-                            value={editFolderName}
-                            onChange={(e) => setEditFolderName(e.target.value)}
-                            className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                editFolder(folder.id);
-                              } else if (e.key === 'Escape') {
-                                setEditingFolder(null);
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <select
-                            value={editFolderColor}
-                            onChange={(e) => setEditFolderColor(e.target.value)}
-                            className="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          >
-                            {colorOptions.map(color => (
-                              <option key={color} value={color}>
-                                {color}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => editFolder(folder.id)}
-                            className="p-1 text-green-600 hover:text-green-700 transition-colors"
-                          >
-                            <Check className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => setEditingFolder(null)}
-                            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
-                          {folder.name}
-                          {['recent', 'work', 'personal'].includes(folder.id) && (
-                            <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">(default)</span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {getFolderMeetingCount(folder.id)}
-                      </span>
-                      {renderFolderActions(folder)}
-                    </div>
-                  </div>
-
-                  {/* Meeting list for expanded folders */}
-                  {expandedFolders.has(folder.id) && (
-                    <div className="ml-6 mt-1 space-y-1">
-                      {getMeetingsForFolder(folder.id).map((meeting) => (
-                        <div
-                          key={meeting.id || meeting._id}
-                          className="flex items-center justify-between px-3 py-2 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer group"
-                          onClick={() => onMeetingClick(meeting.id || meeting._id)}
-                        >
-                          <div className="flex items-center space-x-2 flex-1 min-w-0">
-                            <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <span className="text-gray-700 dark:text-gray-300 truncate">
-                              {meeting.title || 'Untitled Meeting'}
-                            </span>
-                          </div>
-                          
-                          <div className="flex items-center space-x-1">
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(meeting.created_at).toLocaleDateString()}
-                            </span>
-                            <button
-                              onClick={(e) => handleMoveClick(e, meeting)}
-                              className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
-                              title="Move meeting"
-                            >
-                              <FolderOpen className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: folder.color }}
+                  />
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {folder.name}
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    ({getFolderMeetingCount(folder.id)})
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  {renderFolderActions(folder)}
+                  {expandedFolders.has(folder.id) ? (
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
                   )}
                 </div>
-              ))}
-            </div>
+              </button>
 
-            {/* Add some bottom padding to ensure the last item is fully visible */}
-            <div className="h-6"></div>
-          </div>
+              {expandedFolders.has(folder.id) && (
+                <div className="ml-4 mt-2 space-y-1">
+                  {getMeetingsForFolder(folder.id).slice(0, 5).map((meeting) => (
+                    <button
+                      key={meeting.id || meeting._id}
+                      onClick={() => handleMeetingClick(meeting.id || meeting._id)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-left rounded-lg transition-all duration-200 group hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-l-4 hover:border-blue-500 hover:transform hover:translate-x-1 hover:shadow-sm"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">
+                          {meeting.title || 'Untitled Meeting'}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {formatDateIST(meeting.created_at)}
+                        </p>
+                      </div>
+                      {renderMeetingActions(meeting)}
+                    </button>
+                  ))}
+                  
+                  {getMeetingsForFolder(folder.id).length === 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 px-3 py-2">
+                      No meetings in this folder
+                    </p>
+                  )}
+                  
+                  {getMeetingsForFolder(folder.id).length > 5 && (
+                    <button
+                      onClick={() => {
+                        setActiveView('meetings');
+                        // You might want to filter by folder here
+                      }}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 px-3 py-1 transition-colors"
+                    >
+                      View all {getMeetingsForFolder(folder.id).length} meetings...
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 

@@ -9,7 +9,9 @@ import {
   Check,
   User,
   Clock,
-  Mic
+  Mic,
+  VolumeX,
+  Square
 } from 'lucide-react';
 
 const TranscriptViewer = ({ transcript, meetingId }) => {
@@ -18,7 +20,12 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [isTTSPlaying, setIsTTSPlaying] = useState(false);
+  const [currentTTSSegment, setCurrentTTSSegment] = useState(null);
+  const [isGlobalTTSPlaying, setIsGlobalTTSPlaying] = useState(false);
   const transcriptRef = useRef(null);
+  const ttsRef = useRef(null);
+  const isManuallyStopped = useRef(false); // Add this ref to track manual stops
 
   // Parse transcript into segments (assuming it's formatted with timestamps and speakers)
   const parseTranscript = (rawTranscript) => {
@@ -54,6 +61,146 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
     
     return matchesSearch && matchesSpeaker;
   });
+
+  // TTS Functions
+  const playTTSSegment = (text, segmentId) => {
+    if ('speechSynthesis' in window) {
+      // If this segment is currently playing, stop it
+      if (currentTTSSegment === segmentId && isTTSPlaying) {
+        stopTTS();
+        return;
+      }
+      
+      // Stop any current TTS
+      stopTTS();
+      
+      // Reset the manual stop flag
+      isManuallyStopped.current = false;
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      // Configure voice settings
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      
+      // Set voice if available
+      const voices = speechSynthesis.getVoices();
+      const englishVoice = voices.find(voice => voice.lang.includes('en'));
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+      }
+      
+      utterance.onstart = () => {
+        if (!isManuallyStopped.current) {
+          setIsTTSPlaying(true);
+          setCurrentTTSSegment(segmentId);
+        }
+      };
+      
+      utterance.onend = () => {
+        // Only reset states if not manually stopped
+        if (!isManuallyStopped.current) {
+          setIsTTSPlaying(false);
+          setCurrentTTSSegment(null);
+        }
+      };
+      
+      utterance.onerror = () => {
+        setIsTTSPlaying(false);
+        setCurrentTTSSegment(null);
+      };
+      
+      ttsRef.current = utterance;
+      speechSynthesis.speak(utterance);
+    } else {
+      alert('Text-to-speech is not supported in your browser.');
+    }
+  };
+
+  const playGlobalTTS = () => {
+    if ('speechSynthesis' in window) {
+      if (isGlobalTTSPlaying) {
+        stopTTS();
+        return;
+      }
+      
+      // Create full text from filtered segments
+      const fullText = filteredSegments
+        .map(segment => `${segment.speaker} says: ${segment.text}`)
+        .join('. ');
+      
+      if (!fullText.trim()) {
+        alert('No content to read.');
+        return;
+      }
+      
+      // Reset the manual stop flag
+      isManuallyStopped.current = false;
+      
+      const utterance = new SpeechSynthesisUtterance(fullText);
+      
+      // Configure voice settings
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      
+      // Set voice if available
+      const voices = speechSynthesis.getVoices();
+      const englishVoice = voices.find(voice => voice.lang.includes('en'));
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+      }
+      
+      utterance.onstart = () => {
+        if (!isManuallyStopped.current) {
+          setIsGlobalTTSPlaying(true);
+        }
+      };
+      
+      utterance.onend = () => {
+        if (!isManuallyStopped.current) {
+          setIsGlobalTTSPlaying(false);
+        }
+      };
+      
+      utterance.onerror = () => {
+        setIsGlobalTTSPlaying(false);
+      };
+      
+      ttsRef.current = utterance;
+      speechSynthesis.speak(utterance);
+    } else {
+      alert('Text-to-speech is not supported in your browser.');
+    }
+  };
+
+  const stopTTS = () => {
+    if ('speechSynthesis' in window) {
+      // Set the manual stop flag before canceling
+      isManuallyStopped.current = true;
+      
+      speechSynthesis.cancel();
+      
+      // Immediately reset all states
+      setIsTTSPlaying(false);
+      setCurrentTTSSegment(null);
+      setIsGlobalTTSPlaying(false);
+      
+      // Clear the TTS reference
+      ttsRef.current = null;
+    }
+  };
+
+  // Clean up TTS on component unmount
+  useEffect(() => {
+    return () => {
+      isManuallyStopped.current = true;
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const handleCopyTranscript = async () => {
     try {
@@ -116,8 +263,32 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
             </p>
           </div>
 
-          {/* Only keep Copy button - Export is handled by the main export button above */}
+          {/* Controls */}
           <div className="flex items-center space-x-3">
+            {/* Global TTS Button */}
+            <button
+              onClick={playGlobalTTS}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                isGlobalTTSPlaying
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50'
+                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+              }`}
+              title={isGlobalTTSPlaying ? 'Stop reading' : 'Listen to transcript'}
+            >
+              {isGlobalTTSPlaying ? (
+                <>
+                  <Square className="w-4 h-4" />
+                  <span className="text-sm">Stop</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-4 h-4" />
+                  <span className="text-sm">Listen</span>
+                </>
+              )}
+            </button>
+
+            {/* Copy Button */}
             <button
               onClick={handleCopyTranscript}
               className="flex items-center space-x-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white rounded-lg transition-colors"
@@ -163,7 +334,11 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
             {filteredSegments.map((segment) => (
               <div
                 key={segment.id}
-                className="flex items-start space-x-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors group"
+                className={`flex items-start space-x-4 p-4 rounded-lg transition-all duration-200 group ${
+                  currentTTSSegment === segment.id
+                    ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                    : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
               >
                 {/* Timestamp */}
                 <div className="flex-shrink-0 w-20">
@@ -206,8 +381,24 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
 
                 {/* Action buttons */}
                 <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                    <Play className="w-4 h-4" />
+                  <button 
+                    onClick={() => playTTSSegment(segment.text, segment.id)}
+                    className={`p-1 rounded transition-colors ${
+                      currentTTSSegment === segment.id && isTTSPlaying
+                        ? 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300'
+                        : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'
+                    }`}
+                    title={
+                      currentTTSSegment === segment.id && isTTSPlaying
+                        ? 'Stop playing'
+                        : 'Play this segment'
+                    }
+                  >
+                    {currentTTSSegment === segment.id && isTTSPlaying ? (
+                      <Square className="w-4 h-4" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
               </div>

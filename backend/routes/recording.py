@@ -77,9 +77,35 @@ def process_audio():
 def stop_recording(meeting_id):
     user_id = get_jwt_identity()
     
-    current_app.mongo.db.meetings.update_one(
+    # Get the meeting first to check when it started
+    meeting = current_app.mongo.db.meetings.find_one({
+        'id': meeting_id, 
+        'user_id': user_id
+    })
+    
+    if not meeting:
+        return jsonify({'error': 'Meeting not found'}), 404
+    
+    current_time = datetime.utcnow()
+    
+    # Set the ended_at timestamp when stopping recording
+    result = current_app.mongo.db.meetings.update_one(
         {'id': meeting_id, 'user_id': user_id},
-        {'$set': {'status': 'completed', 'ended_at': datetime.utcnow()}}
+        {'$set': {
+            'status': 'completed', 
+            'ended_at': current_time,
+            'updated_at': current_time
+        }}
     )
     
-    return jsonify({'status': 'stopped'})
+    if result.modified_count > 0:
+        # Calculate actual duration for logging
+        start_time = meeting.get('created_at')
+        if start_time:
+            duration_seconds = (current_time - start_time).total_seconds()
+            print(f"Meeting {meeting_id} duration: {duration_seconds/60:.1f} minutes")
+    
+    return jsonify({
+        'status': 'stopped',
+        'ended_at': current_time.isoformat()
+    })
