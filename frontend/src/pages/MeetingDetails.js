@@ -813,30 +813,6 @@ const formatDate = (dateValue) => {
   }
 };
 
-// Add IST formatting function
-const formatDateIST = (dateValue) => {
-  const date = parseDateTime(dateValue);
-  if (!date) return 'Invalid Date';
-  
-  try {
-    // Convert to IST (UTC+5:30)
-    const options = {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    };
-    
-    return date.toLocaleString('en-IN', options);
-  } catch (error) {
-    console.error('Error formatting date to IST:', error);
-    return date.toLocaleString();
-  }
-};
-
 // Add this component for the Knowledge Graph tab
 const KnowledgeGraphView = ({ meeting, meetingId }) => {
   const [graphData, setGraphData] = useState(null);

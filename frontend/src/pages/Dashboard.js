@@ -21,43 +21,33 @@ const Dashboard = ({ onNavigate, onMeetingClick }) => {
     { title: 'Weekly report exported', time: '2 days ago', type: 'info', icon: TrendingUp },
   ];
 
-  // Add IST date formatting
-  const formatDateIST = (dateValue) => {
+  const formatDate = (dateValue) => {
     if (!dateValue) return 'N/A';
     
     try {
       let date;
       
-      // Handle different date formats
       if (typeof dateValue === 'string') {
-        // Remove 'Z' if present and parse
-        const cleanDateString = dateValue.replace('Z', '');
-        date = new Date(cleanDateString);
-      } else if (dateValue instanceof Date) {
-        date = dateValue;
+        date = new Date(dateValue);
+      } else if (dateValue.$date) {
+        date = new Date(dateValue.$date);
       } else {
-        return 'N/A';
+        date = new Date(dateValue);
       }
       
-      // Check if date is valid
       if (isNaN(date.getTime())) {
-        console.warn('Invalid date:', dateValue);
         return 'N/A';
       }
       
-      // Format to IST
-      const options = {
-        timeZone: 'Asia/Kolkata',
-        month: 'short',
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      };
-      
-      return date.toLocaleString('en-IN', options);
+        minute: '2-digit'
+      });
     } catch (error) {
-      console.error('Error formatting date:', error, 'Input:', dateValue);
+      console.error('Error formatting date:', error);
       return 'N/A';
     }
   };
@@ -170,7 +160,7 @@ const Dashboard = ({ onNavigate, onMeetingClick }) => {
                         {meeting.title || 'Untitled Meeting'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {formatDateIST(meeting.created_at)} • {meeting.status}
+                        {formatDate(meeting.created_at)} • {meeting.status}
                       </p>
                     </div>
                   </div>

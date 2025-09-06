@@ -241,35 +241,31 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     </div>
   );
 
-  const formatDateIST = (dateValue) => {
+  const formatDate = (dateValue) => {
     if (!dateValue) return 'N/A';
     
     try {
       let date;
       
       if (typeof dateValue === 'string') {
-        const cleanDateString = dateValue.replace('Z', '');
-        date = new Date(cleanDateString);
-      } else if (dateValue instanceof Date) {
-        date = dateValue;
+        date = new Date(dateValue);
+      } else if (dateValue.$date) {
+        date = new Date(dateValue.$date);
       } else {
-        return 'N/A';
+        date = new Date(dateValue);
       }
       
       if (isNaN(date.getTime())) {
         return 'N/A';
       }
       
-      const options = {
-        timeZone: 'Asia/Kolkata',
-        month: 'short',
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'numeric',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      };
-      
-      return date.toLocaleString('en-IN', options);
+        minute: '2-digit'
+      });
     } catch (error) {
       console.error('Error formatting date:', error);
       return 'N/A';
@@ -445,7 +441,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
                                   {meeting.title || 'Untitled Meeting'}
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {formatDateIST(meeting.created_at)}
+                                  {formatDate(meeting.created_at)}
                                 </p>
                               </div>
                               {renderMeetingActions(meeting)}

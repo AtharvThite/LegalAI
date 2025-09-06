@@ -46,13 +46,13 @@ const MeetingChatbot = ({ meetingId }) => {
             id: `q-${item._id}`,
             type: 'user',
             content: item.question,
-            timestamp: new Date(item.timestamp) // Convert to Date object
+            timestamp: item.timestamp // <-- just use raw value
           },
           {
             id: `a-${item._id}`,
             type: 'bot',
             content: item.answer,
-            timestamp: new Date(item.timestamp) // Convert to Date object
+            timestamp: item.timestamp // <-- just use raw value
           }
         ]);
         setMessages(formattedMessages);
@@ -81,7 +81,7 @@ const MeetingChatbot = ({ meetingId }) => {
       id: Date.now(),
       type: 'user',
       content: question,
-      timestamp: new Date() // Use JavaScript Date object
+      timestamp: Date.now() // Use number
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -100,7 +100,7 @@ const MeetingChatbot = ({ meetingId }) => {
           id: Date.now() + 1,
           type: 'bot',
           content: data.answer,
-          timestamp: new Date(data.timestamp) // Convert to Date object
+          timestamp: data.timestamp // Use raw value from backend
         };
         setMessages(prev => [...prev, botMessage]);
       } else {
@@ -162,30 +162,26 @@ const MeetingChatbot = ({ meetingId }) => {
   const formatTime = (timestamp) => {
     try {
       let date;
-      
-      // Handle different timestamp formats
-      if (typeof timestamp === 'string') {
-        // Try parsing ISO string first
+
+      // Handle MongoDB extended JSON format
+      if (timestamp && typeof timestamp === 'object' && timestamp.$date) {
+        date = new Date(timestamp.$date);
+      } else if (typeof timestamp === 'string') {
         date = new Date(timestamp);
       } else if (timestamp instanceof Date) {
         date = timestamp;
-      } else if (typeof timestamp === 'object' && timestamp.$date) {
-        // Handle MongoDB date format
-        date = new Date(timestamp.$date);
       } else if (typeof timestamp === 'number') {
-        // Handle Unix timestamp
         date = new Date(timestamp);
       } else {
-        // Fallback: try to create date from whatever we have
         date = new Date(timestamp);
       }
-      
+
       // Check if date is valid
       if (isNaN(date.getTime())) {
         console.warn('Invalid timestamp:', timestamp);
         return 'Now';
       }
-      
+
       return date.toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit'

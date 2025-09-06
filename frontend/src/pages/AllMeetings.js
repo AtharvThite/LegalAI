@@ -292,27 +292,33 @@ const AllMeetings = ({ onMeetingClick }) => {
     try {
       let date;
       
+      // Handle different date formats from MongoDB
       if (typeof dateValue === 'string') {
+        // Handle ISO strings with or without timezone
         date = new Date(dateValue);
       } else if (dateValue.$date) {
+        // Handle MongoDB $date format
         if (typeof dateValue.$date === 'string') {
           date = new Date(dateValue.$date);
         } else {
           date = new Date(dateValue.$date);
         }
       } else if (typeof dateValue === 'object' && dateValue.getTime) {
+        // Already a Date object
         date = dateValue;
       } else {
         date = new Date(dateValue);
       }
       
+      // Validate the date
       if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateValue);
         return null;
       }
       
       return date;
     } catch (error) {
-      console.error('Error parsing date:', error);
+      console.error('Error parsing date:', error, dateValue);
       return null;
     }
   };
@@ -355,43 +361,33 @@ const AllMeetings = ({ onMeetingClick }) => {
     }
   };
 
-  // Replace the existing formatDisplayDate function with this corrected version:
-  const formatDisplayDate = (dateValue) => {
+  const formatDate = (dateValue) => {
     if (!dateValue) return 'N/A';
     
     try {
       let date;
       
-      // Handle different date formats
       if (typeof dateValue === 'string') {
-        // Remove 'Z' if present and parse
-        const cleanDateString = dateValue.replace('Z', '');
-        date = new Date(cleanDateString);
-      } else if (dateValue instanceof Date) {
-        date = dateValue;
+        date = new Date(dateValue);
+      } else if (dateValue.$date) {
+        date = new Date(dateValue.$date);
       } else {
-        return 'N/A';
+        date = new Date(dateValue);
       }
       
-      // Check if date is valid
       if (isNaN(date.getTime())) {
-        console.warn('Invalid date:', dateValue);
         return 'N/A';
       }
       
-      // Format to IST
-      const options = {
-        timeZone: 'Asia/Kolkata',
-        month: 'short',
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'numeric',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      };
-      
-      return date.toLocaleString('en-IN', options);
+        minute: '2-digit'
+      });
     } catch (error) {
-      console.error('Error formatting date:', error, 'Input:', dateValue);
+      console.error('Error formatting date:', error);
       return 'N/A';
     }
   };
@@ -483,11 +479,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                 <div className="flex items-center space-x-1">
                   <Calendar className="w-4 h-4" />
                   <span>
-                    {new Date(meeting.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}
+                    {formatDate(meeting.created_at)}
                   </span>
                 </div>
                 
