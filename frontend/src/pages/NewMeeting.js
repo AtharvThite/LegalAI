@@ -20,6 +20,7 @@ const NewMeeting = ({ onMeetingCreated, onNavigate }) => {
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [meetingTitle, setMeetingTitle] = useState('');
+  const [meetingDescription, setMeetingDescription] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('en-US');
   const [selectedFolder, setSelectedFolder] = useState('recent');
   const [audioLevel, setAudioLevel] = useState(0);
@@ -371,10 +372,24 @@ const NewMeeting = ({ onMeetingCreated, onNavigate }) => {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
+            {/* Add description box here */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Description (Optional)
+              </label>
+              <textarea
+                value={meetingDescription}
+                onChange={(e) => setMeetingDescription(e.target.value)}
+                placeholder="Add meeting description..."
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <Globe className="inline w-4 h-4 mr-1" />
                   Language
                 </label>
                 <select
