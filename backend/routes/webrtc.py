@@ -19,6 +19,7 @@ def create_room():
     data = request.json
     
     room_id = str(uuid.uuid4())[:8].upper()  # Short room ID for easy sharing
+    meeting_uuid = str(uuid.uuid4())  # Full UUID for the meeting
     
     # Get user info for host details
     user = db.users.find_one({'_id': ObjectId(user_id)})
@@ -26,8 +27,8 @@ def create_room():
         return jsonify({'error': 'User not found'}), 404
     
     meeting_data = {
-        'id': str(uuid.uuid4()),
-        'room_id': room_id,
+        'id': meeting_uuid,  # Use full UUID as the meeting ID
+        'room_id': room_id,  # Short room ID for joining
         'host_id': user_id,
         'host_name': user.get('name', 'Unknown Host'),
         'user_id': user_id,  # For consistency with recorded meetings
@@ -35,7 +36,7 @@ def create_room():
         'description': data.get('description', ''),
         'folder_id': data.get('folder_id', 'recent'),
         'language': data.get('language', 'en-US'),
-        'meeting_type': 'webrtc',
+        'meeting_type': 'webrtc',  # Important: Mark as WebRTC meeting
         'status': 'waiting',
         'created_at': datetime.utcnow(),
         'started_at': None,
@@ -71,6 +72,7 @@ def create_room():
     return jsonify({
         'meeting': meeting_data,
         'room_id': room_id,
+        'meeting_id': meeting_uuid,  # Return the full meeting ID
         'join_url': f'/join/{room_id}'
     }), 201
 
@@ -155,12 +157,14 @@ def join_room(room_id):
         'is_host': user_id == meeting['host_id']
     })
 
-@webrtc_bp.route('/room/<room_id>/participants', methods=['GET'])
+@webrtc_bp.route('/room/<room_id>/transcript', methods=['POST'])
 @jwt_required()
-def get_room_participants(room_id):
+def save_room_transcript(room_id):
     user_id = get_jwt_identity()
     db = get_mongo()
+    data = request.json
     
+    # Find meeting by room_id
     meeting = db.meetings.find_one({'room_id': room_id.upper()})
     if not meeting:
         return jsonify({'error': 'Room not found'}), 404
@@ -168,12 +172,114 @@ def get_room_participants(room_id):
     # Check if user is in the meeting
     user_in_meeting = any(p['user_id'] == user_id for p in meeting.get('participants', []))
     if not user_in_meeting:
-        return jsonify({'error': 'Not authorized to view participants'}), 403
+        return jsonify({'error': 'Not authorized'}), 403
+    
+    # Save transcript segment using the meeting's UUID (not room_id)
+    meeting_uuid = meeting.get('id')  # Use the full UUID
+    
+    transcript_entry = {
+        'meeting_id': meeting_uuid,  # Use meeting UUID, not room_id
+        'room_id': room_id.upper(),
+        'user_id': user_id,
+        'speaker_name': data.get('speaker_name'),
+        'text': data.get('text'),
+        'timestamp': datetime.utcnow(),
+        'confidence': data.get('confidence', 1.0)
+    }
+    
+    db.transcript_segments.insert_one(transcript_entry)
+    
+    return jsonify({'status': 'saved'}), 201
+
+@webrtc_bp.route('/room/<room_id>/transcript', methods=['GET'])
+@jwt_required()
+def get_room_transcript(room_id):
+    user_id = get_jwt_identity()
+    db = get_mongo()
+    
+    # Find meeting by room_id
+    meeting = db.meetings.find_one({'room_id': room_id.upper()})
+    if not meeting:
+        return jsonify({'error': 'Room not found'}), 404
+    
+    meeting_uuid = meeting.get('id')
+    
+    # Get transcript segments using meeting UUID
+    segments = list(db.transcript_segments.find({
+        'meeting_id': meeting_uuid
+    }).sort('timestamp', 1))
+    
+    # Convert ObjectId to string and format timestamps
+    for segment in segments:
+        segment['_id'] = str(segment['_id'])
+        segment['timestamp'] = segment['timestamp'].isoformat() + 'Z'
+    
+    # Build full transcript text
+    full_transcript = '\n\n'.join([
+        f"{segment['speaker_name']} ({segment['timestamp']}): {segment['text']}"
+        for segment in segments
+    ])
     
     return jsonify({
-        'participants': meeting.get('participants', []),
-        'total_count': len(meeting.get('participants', []))
+        'segments': segments,
+        'full_transcript': full_transcript,
+        'total_segments': len(segments)
     })
+
+@webrtc_bp.route('/room/<room_id>/finalize', methods=['POST'])
+@jwt_required()
+def finalize_room_transcript(room_id):
+    """Save final consolidated transcript when meeting ends"""
+    user_id = get_jwt_identity()
+    db = get_mongo()
+    data = request.json
+    
+    # Find meeting by room_id
+    meeting = db.meetings.find_one({'room_id': room_id.upper()})
+    if not meeting:
+        return jsonify({'error': 'Room not found'}), 404
+    
+    # Check if user is host or participant
+    user_in_meeting = any(p['user_id'] == user_id for p in meeting.get('participants', []))
+    if not user_in_meeting:
+        return jsonify({'error': 'Not authorized'}), 403
+    
+    meeting_uuid = meeting.get('id')
+    transcript_text = data.get('transcript', '')
+    
+    if transcript_text:
+        # Save consolidated transcript
+        transcript_data = {
+            'meeting_id': meeting_uuid,
+            'transcript': transcript_text,
+            'speakers': data.get('speakers', []),
+            'language': meeting.get('language', 'en-US'),
+            'created_at': datetime.utcnow(),
+            'updated_at': datetime.utcnow()
+        }
+        
+        # Update or insert transcript
+        db.transcriptions.update_one(
+            {'meeting_id': meeting_uuid},
+            {'$set': transcript_data},
+            upsert=True
+        )
+        
+        # Update meeting status to completed
+        db.meetings.update_one(
+            {'room_id': room_id.upper()},
+            {'$set': {
+                'status': 'completed',
+                'ended_at': datetime.utcnow()
+            }}
+        )
+        
+        return jsonify({
+            'status': 'transcript_saved',
+            'meeting_id': meeting_uuid
+        })
+    
+    return jsonify({'error': 'No transcript provided'}), 400
 
 @webrtc_bp.route('/room/<room_id>/leave', methods=['POST'])
 @jwt_required()
@@ -214,7 +320,7 @@ def end_room(room_id):
     db.meetings.update_one(
         {'room_id': room_id.upper()},
         {'$set': {
-            'status': 'ended',
+            'status': 'completed',  # Mark as completed, not just ended
             'ended_at': end_time
         }}
     )
@@ -231,70 +337,8 @@ def end_room(room_id):
     
     return jsonify({
         'message': 'Meeting ended successfully',
-        'ended_at': end_time.isoformat() + 'Z'
-    })
-
-@webrtc_bp.route('/room/<room_id>/transcript', methods=['POST'])
-@jwt_required()
-def save_room_transcript(room_id):
-    user_id = get_jwt_identity()
-    db = get_mongo()
-    data = request.json
-    
-    meeting = db.meetings.find_one({'room_id': room_id.upper()})
-    if not meeting:
-        return jsonify({'error': 'Room not found'}), 404
-    
-    # Check if user is in the meeting
-    user_in_meeting = any(p['user_id'] == user_id for p in meeting.get('participants', []))
-    if not user_in_meeting:
-        return jsonify({'error': 'Not authorized'}), 403
-    
-    # Save transcript segment
-    transcript_entry = {
-        'meeting_id': meeting.get('id'),
-        'room_id': room_id.upper(),
-        'user_id': user_id,
-        'speaker_name': data.get('speaker_name'),
-        'text': data.get('text'),
-        'timestamp': datetime.utcnow(),
-        'confidence': data.get('confidence', 1.0)
-    }
-    
-    db.transcript_segments.insert_one(transcript_entry)
-    
-    return jsonify({'status': 'saved'}), 201
-
-@webrtc_bp.route('/room/<room_id>/transcript', methods=['GET'])
-@jwt_required()
-def get_room_transcript(room_id):
-    user_id = get_jwt_identity()
-    db = get_mongo()
-    
-    meeting = db.meetings.find_one({'room_id': room_id.upper()})
-    if not meeting:
-        return jsonify({'error': 'Room not found'}), 404
-    
-    # Get transcript segments
-    segments = list(db.transcript_segments.find({
-        'room_id': room_id.upper()
-    }).sort('timestamp', 1))
-    
-    # Convert ObjectId to string and format timestamps
-    for segment in segments:
-        segment['_id'] = str(segment['_id'])
-        segment['timestamp'] = segment['timestamp'].isoformat() + 'Z'
-    
-    # Build full transcript text
-    full_transcript = '\n\n'.join([
-        f"{segment['speaker_name']} ({segment['timestamp']}): {segment['text']}"
-        for segment in segments
-    ])
-    
-    return jsonify({
-        'segments': segments,
-        'full_transcript': full_transcript,
-        'total_segments': len(segments)
+        'ended_at': end_time.isoformat() + 'Z',
+        'meeting_id': meeting.get('id')
     })
 
 @webrtc_bp.route('/room/<room_id>/info', methods=['GET'])
@@ -308,6 +352,7 @@ def get_room_info(room_id):
     
     return jsonify({
         'room_id': meeting['room_id'],
+        'meeting_id': meeting.get('id'),
         'title': meeting.get('title', ''),
         'host_name': meeting.get('host_name', ''),
         'status': meeting.get('status', ''),
