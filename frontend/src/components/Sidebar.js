@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
-  Plus, 
+  Mic, 
+  Video, 
   FileText, 
+  Users, 
   ChevronDown, 
   ChevronRight, 
-  FolderOpen, 
-  Folder,
-  MoreVertical,
-  Edit,
-  Trash2,
+  Plus, 
+  Edit, 
+  Trash2, 
   Move,
-  X,
-  Check
+  Folder,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -49,15 +49,18 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'new-meeting', label: 'New Meeting', icon: Plus },
+    { id: 'new-meeting', label: 'Record Meeting', icon: Mic },
+    { id: 'new-webrtc-meeting', label: 'Video Meeting', icon: Video },
     { id: 'meetings', label: 'All Meetings', icon: FileText },
   ];
 
   const fetchFolders = async () => {
     try {
       const response = await makeAuthenticatedRequest('/meetings/folders');
-      const data = await response.json();
-      setFolders(data || []);
+      if (response.ok) {
+        const data = await response.json();
+        setFolders(data);
+      }
     } catch (error) {
       console.error('Error fetching folders:', error);
     }
@@ -79,10 +82,12 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
   const fetchMeetings = async (folderId = null) => {
     try {
-      const url = folderId ? `/meetings?folder_id=${folderId}&limit=5` : '/meetings?limit=5';
+      const url = folderId ? `/meetings?folder_id=${folderId}&limit=50` : '/meetings?limit=50';
       const response = await makeAuthenticatedRequest(url);
-      const data = await response.json();
-      setMeetings(data.meetings || []);
+      if (response.ok) {
+        const data = await response.json();
+        setMeetings(data.meetings || []);
+      }
     } catch (error) {
       console.error('Error fetching meetings:', error);
     }
@@ -101,7 +106,8 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
       });
 
       if (response.ok) {
-        await fetchFolders();
+        const newFolder = await response.json();
+        setFolders([...folders, newFolder]);
         setShowCreateFolder(false);
         setNewFolderName('');
         setNewFolderColor('#3B82F6');
@@ -124,7 +130,11 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
       });
 
       if (response.ok) {
-        await fetchFolders();
+        setFolders(folders.map(f => 
+          f.id === folderId 
+            ? { ...f, name: editFolderName, color: editFolderColor }
+            : f
+        ));
         setEditingFolder(null);
         setEditFolderName('');
         setEditFolderColor('#3B82F6');
@@ -141,9 +151,10 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
       });
 
       if (response.ok) {
-        await fetchFolders();
-        await fetchMeetings(); // Refresh meetings as they might have moved
+        setFolders(folders.filter(f => f.id !== folderId));
         setShowDeleteConfirm(null);
+        // Refresh meetings to show moved meetings in Recent
+        fetchMeetings();
       }
     } catch (error) {
       console.error('Error deleting folder:', error);
@@ -160,9 +171,13 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
       });
 
       if (response.ok) {
-        await fetchMeetings();
-        await fetchFolders(); // Refresh folder counts
-        setShowMoveDialog(null);
+        // Update local state
+        setMeetings(meetings.map(m => 
+          (m.id === meetingId || m._id === meetingId)
+            ? { ...m, folder_id: targetFolderId }
+            : m
+        ));
+        setShowMoveDialog(false);
         setSelectedMeetingToMove(null);
       }
     } catch (error) {
@@ -260,8 +275,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
       }
       
       return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'numeric',
+        month: 'short',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
@@ -348,109 +362,108 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
                 return (
                   <div key={folder.id}>
-                    {/* Fixed: Remove nested buttons by restructuring the folder header */}
-                    <div className="group">
-                      <div
-                        className="w-full flex items-center justify-between px-3 py-2 text-left rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                    {editingFolder === folder.id ? (
+                      <div className="p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <input
+                          type="text"
+                          value={editFolderName}
+                          onChange={(e) => setEditFolderName(e.target.value)}
+                          className="w-full px-2 py-1 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded mb-2"
+                          autoFocus
+                        />
+                        <div className="flex space-x-1 mb-2">
+                          {colorOptions.map(color => (
+                            <button
+                              key={color}
+                              onClick={() => setEditFolderColor(color)}
+                              className={`w-4 h-4 rounded-full border ${
+                                editFolderColor === color ? 'border-gray-900 dark:border-white' : 'border-gray-300'
+                              }`}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => editFolder(folder.id)}
+                            className="flex-1 text-xs bg-blue-500 text-white py-1 rounded"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingFolder(null);
+                              setEditFolderName('');
+                              setEditFolderColor('#3B82F6');
+                            }}
+                            className="flex-1 text-xs bg-gray-500 text-white py-1 rounded"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer group"
                         onClick={() => toggleFolder(folder.id)}
                       >
-                        <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <div className="flex items-center space-x-2 flex-1">
                           {isExpanded ? (
                             <ChevronDown className="w-4 h-4 text-gray-400" />
                           ) : (
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           )}
                           <div 
-                            className="w-3 h-3 rounded-full flex-shrink-0" 
+                            className="w-3 h-3 rounded-full" 
                             style={{ backgroundColor: folder.color }}
                           />
-                          {isExpanded ? (
-                            <FolderOpen className="w-4 h-4 text-gray-400" />
-                          ) : (
-                            <Folder className="w-4 h-4 text-gray-400" />
-                          )}
-                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                          <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
                             {folder.name}
                           </span>
-                          {meetingCount > 0 && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              ({meetingCount})
-                            </span>
-                          )}
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto mr-2">
+                            {meetingCount}
+                          </span>
                         </div>
                         {renderFolderActions(folder)}
                       </div>
+                    )}
 
-                      {/* Edit folder form */}
-                      {editingFolder === folder.id && (
-                        <div className="ml-4 mt-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <div className="space-y-3">
-                            <input
-                              type="text"
-                              value={editFolderName}
-                              onChange={(e) => setEditFolderName(e.target.value)}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                              placeholder="Folder name"
-                              autoFocus
-                            />
-                            <div className="flex space-x-1">
-                              {colorOptions.map(color => (
-                                <button
-                                  key={color}
-                                  onClick={() => setEditFolderColor(color)}
-                                  className={`w-5 h-5 rounded-full border-2 ${
-                                    editFolderColor === color ? 'border-gray-900 dark:border-white' : 'border-gray-300'
-                                  }`}
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => editFolder(folder.id)}
-                                className="flex items-center space-x-1 px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600"
-                              >
-                                <Check className="w-3 h-3" />
-                                <span>Save</span>
-                              </button>
-                              <button
-                                onClick={() => setEditingFolder(null)}
-                                className="flex items-center space-x-1 px-2 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600"
-                              >
-                                <X className="w-3 h-3" />
-                                <span>Cancel</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Meetings in folder */}
-                    {isExpanded && (
-                      <div className="ml-4 mt-2 space-y-1">
-                        {folderMeetings.length > 0 ? (
-                          folderMeetings.map((meeting) => (
-                            <div
-                              key={meeting.id || meeting._id}
-                              className="group flex items-center justify-between px-3 py-2 text-left rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                              onClick={() => handleMeetingClick(meeting.id || meeting._id)}
-                            >
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm text-gray-900 dark:text-white truncate">
+                    {isExpanded && folderMeetings.length > 0 && (
+                      <div className="ml-6 mt-1 space-y-1">
+                        {folderMeetings.slice(0, 5).map((meeting) => (
+                          <div
+                            key={meeting.id || meeting._id}
+                            onClick={() => handleMeetingClick(meeting.id || meeting._id)}
+                            className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer group"
+                          >
+                            <div className="flex items-center space-x-2 flex-1">
+                              {meeting.meeting_type === 'webrtc' ? (
+                                <Video className="w-3 h-3 text-green-500" />
+                              ) : (
+                                <Mic className="w-3 h-3 text-blue-500" />
+                              )}
+                              <div className="flex-1">
+                                <p className="text-xs text-gray-700 dark:text-gray-300 font-medium truncate">
                                   {meeting.title || 'Untitled Meeting'}
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  <Clock className="inline w-3 h-3 mr-1" />
                                   {formatDate(meeting.created_at)}
                                 </p>
                               </div>
-                              {renderMeetingActions(meeting)}
                             </div>
-                          ))
-                        ) : (
-                          <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                            No meetings yet
-                          </p>
+                            {renderMeetingActions(meeting)}
+                          </div>
+                        ))}
+                        {folderMeetings.length > 5 && (
+                          <div className="p-2 text-center">
+                            <button
+                              onClick={() => setActiveView('meetings')}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                            >
+                              View {folderMeetings.length - 5} more...
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}

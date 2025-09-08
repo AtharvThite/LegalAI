@@ -219,6 +219,7 @@ try:
     from routes.knowledge_graph import knowledge_graph_bp
     from routes.chatbot import chatbot_bp
     from routes.report import report_bp
+    from routes.webrtc import webrtc_bp  # Add the new WebRTC routes
     
     app.register_blueprint(meetings_bp, url_prefix='/api/meetings')
     app.register_blueprint(recording_bp, url_prefix='/api/recording')
@@ -227,6 +228,7 @@ try:
     app.register_blueprint(knowledge_graph_bp, url_prefix='/api/knowledge-graph')
     app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
     app.register_blueprint(report_bp, url_prefix='/api/report')
+    app.register_blueprint(webrtc_bp, url_prefix='/api/webrtc')  # Register WebRTC routes
     
 except ImportError as e:
     print(f"Warning: Could not import some routes: {e}")

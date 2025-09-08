@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Clock, Users, Globe, TrendingUp, Calendar, Zap, Activity } from 'lucide-react';
+import { FileText, Clock, Users, Globe, TrendingUp, Calendar, Zap, Activity, Video, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Dashboard = ({ onNavigate, onMeetingClick }) => {
+const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
   const [recentMeetings, setRecentMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [joinRoomId, setJoinRoomId] = useState('');
   const { makeAuthenticatedRequest } = useAuth();
 
   const stats = [
@@ -52,6 +53,13 @@ const Dashboard = ({ onNavigate, onMeetingClick }) => {
     }
   };
 
+  const handleJoinRoom = () => {
+    if (joinRoomId.trim()) {
+      onJoinRoom(joinRoomId.trim().toUpperCase());
+      setJoinRoomId('');
+    }
+  };
+
   useEffect(() => {
     const fetchRecentMeetings = async () => {
       try {
@@ -83,6 +91,92 @@ const Dashboard = ({ onNavigate, onMeetingClick }) => {
           </div>
           <div className="hidden md:block">
             <Calendar className="w-16 h-16 text-blue-200" />
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Meeting Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Start New Meeting
+          </h3>
+          <div className="space-y-3">
+            <button 
+              onClick={() => onNavigate('new-meeting')}
+              className="w-full p-4 text-left bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors border-2 border-dashed border-blue-300 dark:border-blue-600"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+                  <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <span className="block text-sm font-medium text-blue-900 dark:text-blue-100">Record Meeting</span>
+                  <span className="text-xs text-blue-700 dark:text-blue-300">Audio recording with AI transcription</span>
+                </div>
+              </div>
+            </button>
+            
+            <button 
+              onClick={() => onNavigate('new-webrtc-meeting')}
+              className="w-full p-4 text-left bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors border-2 border-dashed border-green-300 dark:border-green-600"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-green-100 dark:bg-green-900/40 rounded-lg">
+                  <Video className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <span className="block text-sm font-medium text-green-900 dark:text-green-100">Video Meeting</span>
+                  <span className="text-xs text-green-700 dark:text-green-300">Group video call with live transcription</span>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Join Meeting
+          </h3>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={joinRoomId}
+              onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
+              placeholder="Enter room ID..."
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              maxLength={8}
+            />
+            <button
+              onClick={handleJoinRoom}
+              disabled={!joinRoomId.trim()}
+              className="w-full px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium"
+            >
+              Join Room
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Quick Actions
+          </h3>
+          <div className="space-y-3">
+            <button 
+              onClick={() => onNavigate('meetings')}
+              className="w-full p-3 text-left bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors"
+            >
+              <div className="flex items-center space-x-3">
+                <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <span className="text-sm font-medium text-purple-900 dark:text-purple-100">View All Meetings</span>
+              </div>
+            </button>
+            <button className="w-full p-3 text-left bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors">
+              <div className="flex items-center space-x-3">
+                <Calendar className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <span className="text-sm font-medium text-green-900 dark:text-green-100">Schedule Meeting</span>
+              </div>
+            </button>
           </div>
         </div>
       </div>
@@ -153,14 +247,18 @@ const Dashboard = ({ onNavigate, onMeetingClick }) => {
                     className="flex items-start space-x-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors cursor-pointer group"
                   >
                     <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
-                      <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      {meeting.meeting_type === 'webrtc' ? (
+                        <Video className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      )}
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
                         {meeting.title || 'Untitled Meeting'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {formatDate(meeting.created_at)} • {meeting.status}
+                        {formatDate(meeting.created_at)} • {meeting.status} • {meeting.meeting_type === 'webrtc' ? 'Video Meeting' : 'Recording'}
                       </p>
                     </div>
                   </div>
@@ -181,56 +279,25 @@ const Dashboard = ({ onNavigate, onMeetingClick }) => {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Quick Actions
-            </h3>
-            <div className="space-y-3">
-              <button 
-                onClick={() => onNavigate('new-meeting')}
-                className="w-full p-3 text-left bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
-              >
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Start New Meeting</span>
-                </div>
-              </button>
-              <button 
-                onClick={() => onNavigate('meetings')}
-                className="w-full p-3 text-left bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors"
-              >
-                <div className="flex items-center space-x-3">
-                  <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  <span className="text-sm font-medium text-purple-900 dark:text-purple-100">View All Meetings</span>
-                </div>
-              </button>
-              <button className="w-full p-3 text-left bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors">
-                <div className="flex items-center space-x-3">
-                  <Calendar className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  <span className="text-sm font-medium text-green-900 dark:text-green-100">Schedule Meeting</span>
-                </div>
-              </button>
+        {/* Weekly Summary */}
+        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white">
+          <h3 className="text-lg font-semibold mb-4">This Week</h3>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-indigo-100">Meetings</span>
+              <span className="font-semibold">8</span>
             </div>
-          </div>
-
-          {/* Weekly Summary */}
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white">
-            <h3 className="text-lg font-semibold mb-2">This Week</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-indigo-100">Meetings</span>
-                <span className="font-semibold">8</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-indigo-100">Total Time</span>
-                <span className="font-semibold">6.5h</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-indigo-100">Participants</span>
-                <span className="font-semibold">42</span>
-              </div>
+            <div className="flex justify-between items-center">
+              <span className="text-indigo-100">Total Time</span>
+              <span className="font-semibold">6.5h</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-indigo-100">Participants</span>
+              <span className="font-semibold">42</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-indigo-100">Video Calls</span>
+              <span className="font-semibold">3</span>
             </div>
           </div>
         </div>
