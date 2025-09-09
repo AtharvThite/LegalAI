@@ -16,6 +16,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
   
   // Meeting states
   const [participants, setParticipants] = useState([]);
+  const [participantMuteStatus, setParticipantMuteStatus] = useState(new Map()); // Track mute status
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [meetingInfo, setMeetingInfo] = useState(meetingData);
@@ -190,8 +191,20 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     socket.on('offer', handleOffer);
     socket.on('answer', handleAnswer);
     socket.on('ice-candidate', handleIceCandidate);
+    
+    // Handle transcript updates
     socket.on('transcript-update', (data) => {
       setTranscript(prev => [...prev, data]);
+    });
+
+    // Handle mute status updates
+    socket.on('participant-mute-status', (data) => {
+      console.log('🔇 Participant mute status update:', data);
+      setParticipantMuteStatus(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.socket_id, data.is_muted);
+        return newMap;
+      });
     });
 
     // Meeting end events
@@ -275,6 +288,39 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
       if (videoElement && remoteStream) {
         videoElement.srcObject = remoteStream;
       }
+
+      // Monitor audio track for mute status
+      const audioTrack = remoteStream.getAudioTracks()[0];
+      if (audioTrack) {
+        // Listen for track enabled/disabled changes
+        const checkMuteStatus = () => {
+          const isMuted = !audioTrack.enabled;
+          setParticipantMuteStatus(prev => {
+            const newMap = new Map(prev);
+            if (newMap.get(socketId) !== isMuted) {
+              newMap.set(socketId, isMuted);
+              // Notify other participants about mute status change
+              if (socketRef.current) {
+                socketRef.current.emit('participant-mute-status', {
+                  room_id: roomId,
+                  socket_id: socketId,
+                  is_muted: isMuted,
+                  user_name: userName
+                });
+              }
+            }
+            return newMap;
+          });
+        };
+
+        // Initial check
+        checkMuteStatus();
+        
+        // Monitor for changes
+        audioTrack.addEventListener('ended', checkMuteStatus);
+        // Note: There's no direct event for enabled/disabled changes,
+        // so we'll rely on periodic checks or UI updates
+      }
     };
 
     // Handle ICE candidates
@@ -308,7 +354,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     }
 
     return pc;
-  }, [rtcConfig]);
+  }, [rtcConfig, roomId]);
 
   // Handle received offer
   const handleOffer = async (data) => {
@@ -388,11 +434,18 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
       return newMap;
     });
 
+    // Remove mute status
+    setParticipantMuteStatus(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(socketId);
+      return newMap;
+    });
+
     // Clean up video reference
     remoteVideosRef.current.delete(socketId);
   };
 
-  // Initialize speech recognition
+  // Initialize speech recognition with privacy check
   const initializeTranscription = useCallback(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       console.warn('Speech recognition not supported');
@@ -407,6 +460,12 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     recognitionInstance.lang = meetingInfo?.language || 'en-US';
 
     recognitionInstance.onresult = async (event) => {
+      // PRIVACY CHECK: Only transcribe if user is unmuted
+      if (!isAudioEnabled) {
+        console.log('🔇 User is muted, skipping transcription for privacy');
+        return;
+      }
+
       let finalTranscript = '';
       
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -421,7 +480,8 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
           speaker_name: user?.name || 'You',
           text: finalTranscript.trim(),
           timestamp: new Date().toISOString(),
-          confidence: event.results[event.results.length - 1][0].confidence || 0.9
+          confidence: event.results[event.results.length - 1][0].confidence || 0.9,
+          is_muted: false // Explicitly mark as unmuted since we checked above
         };
 
         setTranscript(prev => [...prev, transcriptEntry]);
@@ -438,21 +498,27 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
     recognitionInstance.onend = () => {
       if (transcriptionEnabled && isTranscribing) {
-        // Restart if still enabled
-        setTimeout(() => {
-          try {
-            recognitionInstance.start();
-          } catch (error) {
-            console.error('Error restarting speech recognition:', error);
-            setIsTranscribing(false);
-          }
-        }, 1000);
+        // Only restart if user is still unmuted
+        if (isAudioEnabled) {
+          setTimeout(() => {
+            try {
+              recognitionInstance.start();
+            } catch (error) {
+              console.error('Error restarting speech recognition:', error);
+              setIsTranscribing(false);
+            }
+          }, 1000);
+        } else {
+          console.log('🔇 User is muted, stopping transcription');
+          setIsTranscribing(false);
+        }
       }
     };
 
     setRecognition(recognitionInstance);
 
-    if (transcriptionEnabled) {
+    // Only start if transcription is enabled AND user is unmuted
+    if (transcriptionEnabled && isAudioEnabled) {
       try {
         recognitionInstance.start();
         setIsTranscribing(true);
@@ -460,7 +526,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
         console.error('Error starting speech recognition:', error);
       }
     }
-  }, [user, meetingInfo, transcriptionEnabled]);
+  }, [user, meetingInfo, transcriptionEnabled, isAudioEnabled]);
 
   // Save transcript segment
   const saveTranscriptSegment = async (transcriptEntry) => {
@@ -482,7 +548,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     }
   };
 
-  // Fixed media controls
+  // Fixed media controls with transcription privacy handling
   const toggleVideo = async () => {
     console.log('Toggling video, current state:', isVideoEnabled);
     
@@ -536,11 +602,16 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
   const toggleAudio = async () => {
     console.log('Toggling audio, current state:', isAudioEnabled);
     
+    const newAudioState = !isAudioEnabled;
+    
     if (!localStream) {
       console.log('No local stream, initializing...');
-      const newStream = await initializeMedia(isVideoEnabled, !isAudioEnabled);
+      const newStream = await initializeMedia(isVideoEnabled, newAudioState);
       if (newStream) {
-        setIsAudioEnabled(!isAudioEnabled);
+        setIsAudioEnabled(newAudioState);
+        
+        // Handle transcription based on new audio state
+        handleTranscriptionOnMuteToggle(newAudioState);
       }
       return;
     }
@@ -548,11 +619,25 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     const audioTrack = localStream.getAudioTracks()[0];
     
     if (audioTrack) {
-      // Simply toggle the existing track
-      audioTrack.enabled = !audioTrack.enabled;
-      setIsAudioEnabled(audioTrack.enabled);
-      console.log('Audio track enabled:', audioTrack.enabled);
-    } else if (!isAudioEnabled) {
+      // Toggle the existing track
+      audioTrack.enabled = newAudioState;
+      setIsAudioEnabled(newAudioState);
+      console.log('Audio track enabled:', newAudioState);
+      
+      // Handle transcription based on mute status
+      handleTranscriptionOnMuteToggle(newAudioState);
+      
+      // Notify other participants about mute status change
+      if (socketRef.current) {
+        socketRef.current.emit('participant-mute-status', {
+          room_id: roomId,
+          socket_id: 'local', // Special identifier for local user
+          is_muted: !newAudioState,
+          user_name: user?.name || 'You'
+        });
+      }
+      
+    } else if (newAudioState) {
       // No audio track but user wants to enable audio - need new stream
       console.log('No audio track found, getting new stream with audio...');
       try {
@@ -570,11 +655,35 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
           updatePeerConnectionsWithNewStream(localStream);
           
           setIsAudioEnabled(true);
+          
+          // Handle transcription
+          handleTranscriptionOnMuteToggle(true);
         }
       } catch (error) {
         console.error('Error adding audio track:', error);
         setConnectionError('Failed to enable microphone');
       }
+    }
+  };
+
+  // Handle transcription when user toggles mute
+  const handleTranscriptionOnMuteToggle = (isUnmuted) => {
+    if (!recognition) return;
+
+    if (isUnmuted && transcriptionEnabled && !isTranscribing) {
+      // User unmuted and transcription is enabled - start transcribing
+      console.log('🎙️ User unmuted, starting transcription');
+      try {
+        recognition.start();
+        setIsTranscribing(true);
+      } catch (error) {
+        console.error('Error starting transcription on unmute:', error);
+      }
+    } else if (!isUnmuted && isTranscribing) {
+      // User muted - stop transcribing for privacy
+      console.log('🔇 User muted, stopping transcription for privacy');
+      recognition.stop();
+      setIsTranscribing(false);
     }
   };
 
@@ -602,8 +711,8 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
           });
         }
         
-        // Update local transcription
-        if (newEnabled && !isTranscribing && recognition) {
+        // Update local transcription - but only if user is unmuted
+        if (newEnabled && !isTranscribing && recognition && isAudioEnabled) {
           recognition.start();
           setIsTranscribing(true);
         } else if (!newEnabled && isTranscribing && recognition) {
@@ -728,6 +837,25 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     };
   }, []); // Remove dependencies to avoid re-initialization
 
+  // Handle transcription state based on audio enabled state
+  useEffect(() => {
+    if (recognition && transcriptionEnabled) {
+      if (isAudioEnabled && !isTranscribing) {
+        // User is unmuted and transcription is enabled - start transcribing
+        try {
+          recognition.start();
+          setIsTranscribing(true);
+        } catch (error) {
+          console.error('Error starting transcription:', error);
+        }
+      } else if (!isAudioEnabled && isTranscribing) {
+        // User is muted - stop transcribing for privacy
+        recognition.stop();
+        setIsTranscribing(false);
+      }
+    }
+  }, [isAudioEnabled, transcriptionEnabled, recognition, isTranscribing]);
+
   // Scroll transcript to bottom
   useEffect(() => {
     if (transcriptRef.current) {
@@ -796,7 +924,6 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   const layout = getGridLayout();
 
-  // Rest of the JSX remains the same...
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       {/* Meeting ended modal */}
@@ -883,6 +1010,11 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
               {!transcriptionEnabled ? 'Disabled' : isTranscribing ? 'Recording' : 'Enabled'}
             </span>
             {isHost && <Crown className="w-3 h-3 text-yellow-400" />}
+            {!isAudioEnabled && transcriptionEnabled && (
+              <span className="text-xs bg-red-500 px-1 rounded" title="You're muted - not transcribing">
+                🔇
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -912,6 +1044,9 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
                 <span>{user?.name || 'You'}</span>
                 {!isAudioEnabled && <MicOff className="w-3 h-3 text-red-400" />}
                 {!isVideoEnabled && <VideoOff className="w-3 h-3 text-red-400" />}
+                {transcriptionEnabled && isAudioEnabled && isTranscribing && (
+                  <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Being transcribed" />
+                )}
               </div>
               <button
                 onClick={() => togglePin('local')}
@@ -922,30 +1057,39 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
             </div>
 
             {/* Remote videos */}
-            {Array.from(remoteStreams.entries()).map(([socketId, { stream, userName }]) => (
-              <div key={socketId} className="relative bg-black rounded-lg overflow-hidden group">
-                <video
-                  ref={el => {
-                    if (el) {
-                      remoteVideosRef.current.set(socketId, el);
-                      el.srcObject = stream;
-                    }
-                  }}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-2 left-2 bg-black bg-opacity-50 px-2 py-1 rounded text-white text-sm">
-                  {userName}
+            {Array.from(remoteStreams.entries()).map(([socketId, { stream, userName }]) => {
+              const isMuted = participantMuteStatus.get(socketId) || false;
+              const isBeingTranscribed = transcriptionEnabled && !isMuted;
+              
+              return (
+                <div key={socketId} className="relative bg-black rounded-lg overflow-hidden group">
+                  <video
+                    ref={el => {
+                      if (el) {
+                        remoteVideosRef.current.set(socketId, el);
+                        el.srcObject = stream;
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-2 left-2 bg-black bg-opacity-50 px-2 py-1 rounded text-white text-sm flex items-center space-x-1">
+                    <span>{userName}</span>
+                    {isMuted && <MicOff className="w-3 h-3 text-red-400" />}
+                    {isBeingTranscribed && (
+                      <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Being transcribed" />
+                    )}
+                  </div>
+                  <button
+                    onClick={() => togglePin(socketId)}
+                    className="absolute top-2 right-2 p-1 bg-black bg-opacity-50 hover:bg-opacity-70 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Pin className="w-3 h-3 text-white" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => togglePin(socketId)}
-                  className="absolute top-2 right-2 p-1 bg-black bg-opacity-50 hover:bg-opacity-70 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <Pin className="w-3 h-3 text-white" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
             
           {/* Controls */}
@@ -957,6 +1101,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
                   ? 'bg-gray-600 hover:bg-gray-500 text-white'
                   : 'bg-red-600 hover:bg-red-700 text-white'
               }`}
+              title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
             >
               {isAudioEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
             </button>
@@ -994,8 +1139,15 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
             <div className="flex-1 flex flex-col">
               <div className="p-3 border-b border-gray-700">
                 <h3 className="text-white font-semibold">Live Transcript</h3>
-                {isTranscribing && (
-                  <p className="text-green-400 text-xs mt-1">● Recording</p>
+                {transcriptionEnabled && (
+                  <div className="flex items-center space-x-2 mt-1">
+                    <span className={`text-xs ${isTranscribing ? 'text-green-400' : 'text-yellow-400'}`}>
+                      {isTranscribing ? '● Recording' : '⚪ Paused (muted)'}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      (Privacy: Only unmuted participants are transcribed)
+                    </span>
+                  </div>
                 )}
               </div>
               <div
@@ -1004,13 +1156,21 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
               >
                 {transcript.length === 0 ? (
                   <div className="text-gray-400 text-sm text-center py-8">
-                    {isTranscribing ? 'Listening for speech...' : 'Start transcription to see live text'}
+                    {!transcriptionEnabled 
+                      ? 'Transcription is disabled by host'
+                      : !isAudioEnabled 
+                        ? 'You are muted - unmute to be transcribed'
+                        : 'Listening for speech...'
+                    }
                   </div>
                 ) : (
                   transcript.map((entry) => (
                     <div key={entry.id} className="bg-gray-700 rounded-lg p-3">
                       <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-                        <span>{entry.speaker_name}</span>
+                        <span className="flex items-center space-x-1">
+                          <span>{entry.speaker_name}</span>
+                          <span className="w-2 h-2 bg-green-400 rounded-full" title="Was unmuted when speaking" />
+                        </span>
                         <span>{new Date(entry.timestamp).toLocaleTimeString()}</span>
                       </div>
                       <p className="text-white text-sm">{entry.text}</p>

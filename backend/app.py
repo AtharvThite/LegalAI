@@ -38,7 +38,7 @@ app.mongo = mongo
 
 jwt = JWTManager(app)
 
-# Store active room connections
+# Store active room connections with mute status
 active_rooms = {}
 
 # JWT Error handlers
@@ -86,10 +86,11 @@ def on_join_room(data):
         active_rooms[room_id] = {}
         print(f'Created new room: {room_id}')
     
-    # Add user to room
+    # Add user to room with initial mute status
     active_rooms[room_id][request.sid] = {
         'user_id': user_id,
-        'user_name': user_name
+        'user_name': user_name,
+        'is_muted': True  # Default to muted for privacy
     }
     
     print(f'Room {room_id} now has {len(active_rooms[room_id])} participants')
@@ -101,7 +102,8 @@ def on_join_room(data):
             existing_users.append({
                 'socket_id': sid,
                 'user_id': user_info['user_id'],
-                'user_name': user_info['user_name']
+                'user_name': user_info['user_name'],
+                'is_muted': user_info.get('is_muted', True)
             })
     
     print(f'Sending {len(existing_users)} existing users to new participant')
@@ -113,7 +115,8 @@ def on_join_room(data):
     emit('user-joined', {
         'user_id': user_id,
         'user_name': user_name,
-        'socket_id': request.sid
+        'socket_id': request.sid,
+        'is_muted': True  # Default to muted
     }, room=room_id, include_self=False)
 
 @socketio.on('offer')
@@ -158,8 +161,38 @@ def on_transcript_update(data):
     room_id = data.get('room_id')
     transcript_data = data.get('transcript')
     
-    # Broadcast transcript to all users in room (excluding sender)
-    emit('transcript-update', transcript_data, room=room_id, include_self=False)
+    # Additional privacy check: Only broadcast if speaker was unmuted
+    if transcript_data and not transcript_data.get('is_muted', True):
+        # Broadcast transcript to all users in room (excluding sender)
+        emit('transcript-update', transcript_data, room=room_id, include_self=False)
+        print(f'Broadcasted transcript from unmuted user: {transcript_data.get("speaker_name", "Unknown")}')
+    else:
+        print(f'Blocked transcript from muted user for privacy: {transcript_data.get("speaker_name", "Unknown")}')
+
+@socketio.on('participant-mute-status')
+def on_participant_mute_status(data):
+    room_id = data.get('room_id')
+    socket_id = data.get('socket_id')
+    is_muted = data.get('is_muted', True)
+    user_name = data.get('user_name', 'Unknown')
+    
+    print(f'Mute status update: {user_name} is {"muted" if is_muted else "unmuted"}')
+    
+    # Update mute status in active rooms
+    if room_id in active_rooms:
+        if socket_id == 'local':
+            # Handle local user mute status (use sender's socket ID)
+            socket_id = request.sid
+        
+        if socket_id in active_rooms[room_id]:
+            active_rooms[room_id][socket_id]['is_muted'] = is_muted
+        
+        # Broadcast mute status to all participants
+        emit('participant-mute-status', {
+            'socket_id': socket_id,
+            'is_muted': is_muted,
+            'user_name': user_name
+        }, room=room_id, include_self=False)
 
 @socketio.on('leave-room')
 def on_leave_room(data):
@@ -212,7 +245,8 @@ def on_transcription_toggled(data):
     # Notify all participants about transcription status
     emit('transcription-status-changed', {
         'enabled': enabled,
-        'message': f'Transcription {"enabled" if enabled else "disabled"} by {host_name}'
+        'message': f'Transcription {"enabled" if enabled else "disabled"} by {host_name}',
+        'privacy_notice': 'Only unmuted participants will be transcribed'
     }, room=room_id, include_self=False)
 
 # Authentication routes
