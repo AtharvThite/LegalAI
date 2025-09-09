@@ -57,22 +57,35 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     ]
   };
 
-  // Initialize media stream
-  const initializeMedia = useCallback(async () => {
-    console.log('🎥 Initializing media...');
+  // Initialize media stream with proper constraints
+  const initializeMedia = useCallback(async (videoEnabled = true, audioEnabled = true) => {
+    console.log('🎥 Initializing media...', { videoEnabled, audioEnabled });
     
     if (initializingRef.current) {
       console.log('Media initialization already in progress');
-      return;
+      return localStream;
     }
     
     initializingRef.current = true;
     
     try {
+      // Always request both audio and video initially to avoid permission issues
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: isVideoEnabled,
-        audio: isAudioEnabled
+        video: true,
+        audio: true
       });
+
+      // Apply the desired states after getting permission
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0];
+      
+      if (videoTrack) {
+        videoTrack.enabled = videoEnabled;
+      }
+      
+      if (audioTrack) {
+        audioTrack.enabled = audioEnabled;
+      }
 
       setLocalStream(stream);
       if (localVideoRef.current) {
@@ -82,15 +95,40 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
       console.log('✅ Media initialized successfully');
       
       // Initialize socket after media is ready
-      initializeSocket(stream);
+      if (!socketRef.current) {
+        initializeSocket(stream);
+      } else {
+        // Update existing peer connections with new stream
+        updatePeerConnectionsWithNewStream(stream);
+      }
+      
+      return stream;
       
     } catch (error) {
       console.error('❌ Error initializing media:', error);
       setConnectionError('Failed to access camera/microphone');
+      return null;
     } finally {
       initializingRef.current = false;
     }
-  }, [isVideoEnabled, isAudioEnabled]);
+  }, [localStream]);
+
+  // Update peer connections with new stream
+  const updatePeerConnectionsWithNewStream = (stream) => {
+    peerConnections.current.forEach((pc, socketId) => {
+      console.log(`Updating stream for peer: ${socketId}`);
+      
+      // Remove old tracks
+      pc.getSenders().forEach(sender => {
+        pc.removeTrack(sender);
+      });
+      
+      // Add new tracks
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, stream);
+      });
+    });
+  };
 
   // Initialize Socket.IO connection
   const initializeSocket = useCallback((stream) => {
@@ -215,9 +253,11 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     peerConnections.current.set(socketId, pc);
 
     // Add local stream tracks
-    stream.getTracks().forEach(track => {
-      pc.addTrack(track, stream);
-    });
+    if (stream) {
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, stream);
+      });
+    }
 
     // Handle incoming stream
     pc.ontrack = (event) => {
@@ -442,23 +482,98 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     }
   };
 
-  // Media controls
-  const toggleVideo = () => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoEnabled(videoTrack.enabled);
+  // Fixed media controls
+  const toggleVideo = async () => {
+    console.log('Toggling video, current state:', isVideoEnabled);
+    
+    if (!localStream) {
+      console.log('No local stream, initializing...');
+      const newStream = await initializeMedia(!isVideoEnabled, isAudioEnabled);
+      if (newStream) {
+        setIsVideoEnabled(!isVideoEnabled);
+      }
+      return;
+    }
+
+    const videoTrack = localStream.getVideoTracks()[0];
+    
+    if (videoTrack) {
+      // Simply toggle the existing track
+      videoTrack.enabled = !videoTrack.enabled;
+      setIsVideoEnabled(videoTrack.enabled);
+      console.log('Video track enabled:', videoTrack.enabled);
+    } else if (!isVideoEnabled) {
+      // No video track but user wants to enable video - need new stream
+      console.log('No video track found, getting new stream with video...');
+      try {
+        const newVideoStream = await navigator.mediaDevices.getUserMedia({ 
+          video: true, 
+          audio: false 
+        });
+        
+        const newVideoTrack = newVideoStream.getVideoTracks()[0];
+        if (newVideoTrack) {
+          // Add video track to existing stream
+          localStream.addTrack(newVideoTrack);
+          
+          // Update video element
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = localStream;
+          }
+          
+          // Update all peer connections
+          updatePeerConnectionsWithNewStream(localStream);
+          
+          setIsVideoEnabled(true);
+        }
+      } catch (error) {
+        console.error('Error adding video track:', error);
+        setConnectionError('Failed to enable camera');
       }
     }
   };
 
-  const toggleAudio = () => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsAudioEnabled(audioTrack.enabled);
+  const toggleAudio = async () => {
+    console.log('Toggling audio, current state:', isAudioEnabled);
+    
+    if (!localStream) {
+      console.log('No local stream, initializing...');
+      const newStream = await initializeMedia(isVideoEnabled, !isAudioEnabled);
+      if (newStream) {
+        setIsAudioEnabled(!isAudioEnabled);
+      }
+      return;
+    }
+
+    const audioTrack = localStream.getAudioTracks()[0];
+    
+    if (audioTrack) {
+      // Simply toggle the existing track
+      audioTrack.enabled = !audioTrack.enabled;
+      setIsAudioEnabled(audioTrack.enabled);
+      console.log('Audio track enabled:', audioTrack.enabled);
+    } else if (!isAudioEnabled) {
+      // No audio track but user wants to enable audio - need new stream
+      console.log('No audio track found, getting new stream with audio...');
+      try {
+        const newAudioStream = await navigator.mediaDevices.getUserMedia({ 
+          video: false, 
+          audio: true 
+        });
+        
+        const newAudioTrack = newAudioStream.getAudioTracks()[0];
+        if (newAudioTrack) {
+          // Add audio track to existing stream
+          localStream.addTrack(newAudioTrack);
+          
+          // Update all peer connections
+          updatePeerConnectionsWithNewStream(localStream);
+          
+          setIsAudioEnabled(true);
+        }
+      } catch (error) {
+        console.error('Error adding audio track:', error);
+        setConnectionError('Failed to enable microphone');
       }
     }
   };
@@ -593,7 +708,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   // Initialize everything
   useEffect(() => {
-    initializeMedia();
+    initializeMedia(isVideoEnabled, isAudioEnabled);
     
     return () => {
       // Cleanup on unmount
@@ -611,7 +726,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
         recognition.stop();
       }
     };
-  }, [initializeMedia]);
+  }, []); // Remove dependencies to avoid re-initialization
 
   // Scroll transcript to bottom
   useEffect(() => {
@@ -657,12 +772,23 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
         <div className="text-center text-white max-w-md">
           <h2 className="text-xl font-semibold mb-4">Connection Error</h2>
           <p className="mb-6">{connectionError}</p>
-          <button
-            onClick={onLeave}
-            className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
-          >
-            Go Back
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                setConnectionError('');
+                initializeMedia(true, true);
+              }}
+              className="w-full px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+            >
+              Retry Connection
+            </button>
+            <button
+              onClick={onLeave}
+              className="w-full px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg"
+            >
+              Go Back
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -670,6 +796,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   const layout = getGridLayout();
 
+  // Rest of the JSX remains the same...
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
       {/* Meeting ended modal */}
