@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Header from './components/Header';
@@ -12,6 +12,7 @@ import JoinMeeting from './pages/JoinMeeting';
 import WebRTCMeeting from './pages/WebRTCMeeting';
 import Auth from './components/Auth';
 import LoadingSpinner from './components/LoadingSpinner';
+import LandingPage from './pages/LandingPage';
 
 const AppContent = () => {
   const [activeView, setActiveView] = useState('dashboard');
@@ -20,14 +21,24 @@ const AppContent = () => {
   const [roomId, setRoomId] = useState(null);
   const [meetingData, setMeetingData] = useState(null);
   const [isHost, setIsHost] = useState(false);
+  const [showLanding, setShowLanding] = useState(true); 
   const { user, loading, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setShowLanding(true);
+    }
+  }, [isAuthenticated]);
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
   if (!isAuthenticated) {
-    return <Auth />;
+    if (!showLanding) {
+      return <Auth />;
+    }
+    return <LandingPage onGetStarted={() => setShowLanding(false)} />;
   }
 
   const handleMeetingClick = (meetingId, tab = 'transcript') => {

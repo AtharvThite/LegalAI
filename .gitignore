@@ -5,4 +5,5 @@ backend/vector_stores/
 backend/embeddings/
 backend/.env
 frontend/.env
+backend/venv/
 vector_stores
