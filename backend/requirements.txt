@@ -2,6 +2,7 @@ flask
 flask-cors
 flask-pymongo
 flask-jwt-extended
+flask_socketio
 python-dotenv
 google-generativeai
 langchain

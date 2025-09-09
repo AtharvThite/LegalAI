@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
-  Mic, MicOff, Video, VideoOff, Phone, PhoneOff, 
-  Monitor, Users, MessageSquare, Copy, Check,
-  Crown, Pin, PinOff
+  Video, VideoOff, Mic, MicOff, PhoneOff, Users, MessageSquare, 
+  Copy, Check, Pin, Crown, Settings, PinOff 
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import io from 'socket.io-client';
@@ -30,6 +29,14 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcript, setTranscript] = useState([]);
   const [recognition, setRecognition] = useState(null);
+  const [transcriptionEnabled, setTranscriptionEnabled] = useState(
+    meetingData?.settings?.auto_transcription ?? true
+  );
+  
+  // Meeting end states
+  const [showMeetingEndedModal, setShowMeetingEndedModal] = useState(false);
+  const [meetingEndedBy, setMeetingEndedBy] = useState('');
+  const [finalMeetingData, setFinalMeetingData] = useState(null);
   
   // Refs
   const localVideoRef = useRef(null);
@@ -55,51 +62,40 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     console.log('🎥 Initializing media...');
     
     if (initializingRef.current) {
-      console.log('⚠️ Already initializing media');
-      return null;
+      console.log('Media initialization already in progress');
+      return;
     }
     
     initializingRef.current = true;
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
+        video: isVideoEnabled,
+        audio: isAudioEnabled
       });
-      
-      console.log('✅ Got local media stream with tracks:', stream.getTracks().map(t => t.kind));
-      
+
       setLocalStream(stream);
-      
-      // Set local video immediately
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
-        console.log('✅ Set local video source');
       }
+
+      console.log('✅ Media initialized successfully');
       
-      return stream;
+      // Initialize socket after media is ready
+      initializeSocket(stream);
+      
     } catch (error) {
-      console.error('❌ Error accessing media:', error);
-      setConnectionError(`Camera/microphone access denied: ${error.message}`);
-      return null;
+      console.error('❌ Error initializing media:', error);
+      setConnectionError('Failed to access camera/microphone');
     } finally {
       initializingRef.current = false;
     }
-  }, []);
+  }, [isVideoEnabled, isAudioEnabled]);
 
   // Initialize Socket.IO connection
   const initializeSocket = useCallback((stream) => {
     if (socketRef.current) {
-      console.log('⚠️ Socket already exists');
-      return socketRef.current;
+      socketRef.current.disconnect();
     }
     
     console.log('🔌 Connecting to Socket.IO server...');
@@ -113,239 +109,247 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('✅ Socket.IO connected');
+      console.log('✅ Connected to signaling server');
+      setIsConnected(true);
       
       // Join the room
-      console.log(`📡 Joining room: ${roomId}`);
       socket.emit('join-room', {
         room_id: roomId,
-        user_id: user.id,
-        user_name: user.name
+        user_id: user?.id,
+        user_name: user?.name || 'Anonymous'
       });
     });
 
     socket.on('existing-users', async (users) => {
       console.log('👥 Existing users in room:', users);
-      setIsConnected(true);
       
-      // Create peer connections with existing users (we initiate)
       for (const userInfo of users) {
-        await createPeerConnection(userInfo.socket_id, userInfo.user_name, true, stream);
+        await createPeerConnection(
+          userInfo.socket_id, 
+          userInfo.user_name, 
+          true, // I am the initiator
+          stream
+        );
       }
     });
 
     socket.on('user-joined', async (userInfo) => {
-      console.log('👋 New user joined:', userInfo);
-      setParticipants(prev => [...prev.filter(p => p.socket_id !== userInfo.socket_id), userInfo]);
+      console.log('👋 User joined:', userInfo.user_name);
       
-      // Create peer connection for new user (they will initiate)
-      await createPeerConnection(userInfo.socket_id, userInfo.user_name, false, stream);
-    });
-
-    socket.on('offer', async (data) => {
-      console.log('📞 Received offer from:', data.caller);
-      await handleOffer(data.offer, data.caller);
-    });
-
-    socket.on('answer', async (data) => {
-      console.log('📞 Received answer from:', data.caller);
-      await handleAnswer(data.answer, data.caller);
-    });
-
-    socket.on('ice-candidate', async (data) => {
-      console.log('🧊 Received ICE candidate from:', data.caller);
-      await handleIceCandidate(data.candidate, data.caller);
+      await createPeerConnection(
+        userInfo.socket_id, 
+        userInfo.user_name, 
+        false, // They are the initiator
+        stream
+      );
     });
 
     socket.on('user-left', (data) => {
       console.log('👋 User left:', data.socket_id);
       handleUserLeft(data.socket_id);
-      setParticipants(prev => prev.filter(p => p.socket_id !== data.socket_id));
     });
 
-    socket.on('transcript-update', (transcriptData) => {
-      console.log('📝 Received transcript update');
-      setTranscript(prev => [...prev, transcriptData]);
+    socket.on('offer', handleOffer);
+    socket.on('answer', handleAnswer);
+    socket.on('ice-candidate', handleIceCandidate);
+    socket.on('transcript-update', (data) => {
+      setTranscript(prev => [...prev, data]);
+    });
+
+    // Meeting end events
+    socket.on('meeting-ended', (data) => {
+      console.log('📢 Meeting ended by host:', data);
+      setMeetingEndedBy(data.host_name);
+      setFinalMeetingData(data.meeting_data);
+      setShowMeetingEndedModal(true);
+      
+      // Stop all media streams
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      
+      // Stop transcription
+      if (recognition && isTranscribing) {
+        recognition.stop();
+        setIsTranscribing(false);
+      }
+    });
+
+    socket.on('transcription-status-changed', (data) => {
+      console.log('📝 Transcription status changed:', data);
+      setTranscriptionEnabled(data.enabled);
+      
+      // Auto-start/stop transcription based on host control
+      if (data.enabled && !isTranscribing && recognition) {
+        recognition.start();
+        setIsTranscribing(true);
+      } else if (!data.enabled && isTranscribing && recognition) {
+        recognition.stop();
+        setIsTranscribing(false);
+      }
     });
 
     socket.on('disconnect', () => {
-      console.log('❌ Socket.IO disconnected');
+      console.log('❌ Disconnected from signaling server');
       setIsConnected(false);
     });
 
-    socket.on('connect_error', (error) => {
-      console.error('❌ Socket.IO connection error:', error);
-      setConnectionError(`Connection failed: ${error.message}`);
+    socket.on('error', (error) => {
+      console.error('❌ Socket error:', error);
+      setConnectionError('Connection error');
     });
 
-    socket.on('error', (data) => {
-      console.error('❌ Socket.IO error:', data);
-      setConnectionError(data.message || 'Socket error');
-    });
+    // Initialize transcription after socket setup
+    if (transcriptionEnabled) {
+      initializeTranscription();
+    }
 
     return socket;
-  }, [roomId, user]);
+  }, [roomId, user, transcriptionEnabled]);
 
   // Create peer connection
   const createPeerConnection = useCallback(async (socketId, userName, isInitiator, stream) => {
-    console.log(`🔗 Creating peer connection with ${userName} (${socketId}), initiator: ${isInitiator}`);
+    console.log(`🔗 Creating peer connection with ${userName} (${socketId})`);
     
-    if (peerConnections.current.has(socketId)) {
-      console.log('⚠️ Peer connection already exists for', socketId);
-      return;
-    }
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections.current.set(socketId, pc);
 
-    try {
-      const peerConnection = new RTCPeerConnection(rtcConfig);
-      peerConnections.current.set(socketId, peerConnection);
+    // Add local stream tracks
+    stream.getTracks().forEach(track => {
+      pc.addTrack(track, stream);
+    });
 
-      // Add local stream tracks
-      if (stream) {
-        console.log('📤 Adding local tracks to peer connection');
-        stream.getTracks().forEach(track => {
-          console.log(`Adding ${track.kind} track`);
-          peerConnection.addTrack(track, stream);
+    // Handle incoming stream
+    pc.ontrack = (event) => {
+      console.log('📺 Received remote stream from', userName);
+      const [remoteStream] = event.streams;
+      
+      setRemoteStreams(prev => {
+        const newMap = new Map(prev);
+        newMap.set(socketId, { stream: remoteStream, userName });
+        return newMap;
+      });
+
+      // Set video element
+      const videoElement = remoteVideosRef.current.get(socketId);
+      if (videoElement && remoteStream) {
+        videoElement.srcObject = remoteStream;
+      }
+    };
+
+    // Handle ICE candidates
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socketRef.current) {
+        socketRef.current.emit('ice-candidate', {
+          target: socketId,
+          candidate: event.candidate
         });
       }
+    };
 
-      // Handle remote stream
-      peerConnection.ontrack = (event) => {
-        console.log(`📥 Received ${event.track.kind} track from ${socketId}`);
-        const [remoteStream] = event.streams;
+    // Handle connection state
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state with ${userName}: ${pc.connectionState}`);
+    };
+
+    // If we're the initiator, create offer
+    if (isInitiator) {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
         
-        setRemoteStreams(prev => {
-          const newMap = new Map(prev);
-          newMap.set(socketId, {
-            stream: remoteStream,
-            userName: userName,
-            socketId: socketId
-          });
-          console.log(`✅ Added remote stream for ${userName}, total streams:`, newMap.size);
-          return newMap;
-        });
-      };
-
-      // Handle ICE candidates
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate && socketRef.current) {
-          socketRef.current.emit('ice-candidate', {
-            target: socketId,
-            candidate: event.candidate
-          });
-        }
-      };
-
-      // Connection state monitoring
-      peerConnection.onconnectionstatechange = () => {
-        console.log(`Connection state with ${socketId}: ${peerConnection.connectionState}`);
-      };
-
-      peerConnection.oniceconnectionstatechange = () => {
-        console.log(`ICE connection state with ${socketId}: ${peerConnection.iceConnectionState}`);
-      };
-
-      // Create offer if initiator
-      if (isInitiator) {
-        console.log(`📞 Creating offer for ${socketId}`);
-        const offer = await peerConnection.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true
-        });
-        await peerConnection.setLocalDescription(offer);
-        
-        console.log(`📤 Sending offer to ${socketId}`);
         socketRef.current.emit('offer', {
           target: socketId,
           offer: offer
         });
+      } catch (error) {
+        console.error('Error creating offer:', error);
       }
-
-    } catch (error) {
-      console.error(`❌ Error creating peer connection with ${socketId}:`, error);
     }
+
+    return pc;
   }, [rtcConfig]);
 
   // Handle received offer
-  const handleOffer = async (offer, callerId) => {
-    console.log(`📞 Handling offer from ${callerId}`);
-    
-    try {
-      const peerConnection = peerConnections.current.get(callerId);
-      if (!peerConnection) {
-        console.error(`❌ No peer connection found for ${callerId}`);
-        return;
-      }
+  const handleOffer = async (data) => {
+    const { offer, caller } = data;
+    console.log('📨 Received offer from', caller);
 
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      
-      console.log(`📤 Sending answer to ${callerId}`);
+    const pc = peerConnections.current.get(caller);
+    if (!pc) {
+      console.error('No peer connection found for caller:', caller);
+      return;
+    }
+
+    try {
+      await pc.setRemoteDescription(offer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
       socketRef.current.emit('answer', {
-        target: callerId,
+        target: caller,
         answer: answer
       });
     } catch (error) {
-      console.error(`❌ Error handling offer from ${callerId}:`, error);
+      console.error('Error handling offer:', error);
     }
   };
 
   // Handle received answer
-  const handleAnswer = async (answer, callerId) => {
-    console.log(`📞 Handling answer from ${callerId}`);
-    
-    try {
-      const peerConnection = peerConnections.current.get(callerId);
-      if (!peerConnection) {
-        console.error(`❌ No peer connection found for ${callerId}`);
-        return;
-      }
+  const handleAnswer = async (data) => {
+    const { answer, caller } = data;
+    console.log('📨 Received answer from', caller);
 
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-      console.log(`✅ Set remote description for ${callerId}`);
+    const pc = peerConnections.current.get(caller);
+    if (!pc) {
+      console.error('No peer connection found for caller:', caller);
+      return;
+    }
+
+    try {
+      await pc.setRemoteDescription(answer);
     } catch (error) {
-      console.error(`❌ Error handling answer from ${callerId}:`, error);
+      console.error('Error handling answer:', error);
     }
   };
 
   // Handle ICE candidate
-  const handleIceCandidate = async (candidate, callerId) => {
-    try {
-      const peerConnection = peerConnections.current.get(callerId);
-      if (!peerConnection) {
-        console.error(`❌ No peer connection found for ${callerId}`);
-        return;
-      }
+  const handleIceCandidate = async (data) => {
+    const { candidate, caller } = data;
+    
+    const pc = peerConnections.current.get(caller);
+    if (!pc) {
+      console.error('No peer connection found for caller:', caller);
+      return;
+    }
 
-      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    try {
+      await pc.addIceCandidate(candidate);
     } catch (error) {
-      console.error(`❌ Error handling ICE candidate from ${callerId}:`, error);
+      console.error('Error adding ICE candidate:', error);
     }
   };
 
   // Handle user left
   const handleUserLeft = (socketId) => {
-    console.log(`👋 Handling user left: ${socketId}`);
+    console.log('🚪 Cleaning up connection for', socketId);
     
-    const peerConnection = peerConnections.current.get(socketId);
-    if (peerConnection) {
-      peerConnection.close();
+    // Close peer connection
+    const pc = peerConnections.current.get(socketId);
+    if (pc) {
+      pc.close();
       peerConnections.current.delete(socketId);
     }
-    
-    remoteVideosRef.current.delete(socketId);
-    
+
+    // Remove remote stream
     setRemoteStreams(prev => {
       const newMap = new Map(prev);
       newMap.delete(socketId);
-      console.log(`✅ Removed user ${socketId}, remaining:`, newMap.size);
       return newMap;
     });
 
-    if (pinnedParticipant === socketId) {
-      setPinnedParticipant(null);
-    }
+    // Clean up video reference
+    remoteVideosRef.current.delete(socketId);
   };
 
   // Initialize speech recognition
@@ -356,68 +360,83 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = meetingInfo?.language || 'en-US';
-    
-    recognition.onresult = (event) => {
+    const recognitionInstance = new SpeechRecognition();
+
+    recognitionInstance.continuous = true;
+    recognitionInstance.interimResults = true;
+    recognitionInstance.lang = meetingInfo?.language || 'en-US';
+
+    recognitionInstance.onresult = async (event) => {
+      let finalTranscript = '';
+      
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
-          const transcriptText = event.results[i][0].transcript;
-          const transcriptEntry = {
-            id: Date.now() + Math.random(),
-            speaker_name: user?.name || 'You',
-            text: transcriptText.trim(),
-            timestamp: new Date(),
-            user_id: user?.id
-          };
-          
-          setTranscript(prev => [...prev, transcriptEntry]);
-          
-          // Broadcast to other participants
-          if (socketRef.current) {
-            socketRef.current.emit('transcript-update', {
-              room_id: roomId,
-              transcript: transcriptEntry
-            });
-          }
-          
-          // Save to backend
-          saveTranscriptSegment(transcriptEntry);
+          finalTranscript += event.results[i][0].transcript;
         }
       }
-    };
-    
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-    };
-    
-    recognition.onend = () => {
-      if (isTranscribing) {
-        setTimeout(() => {
-          if (recognition && isTranscribing) {
-            recognition.start();
-          }
-        }, 100);
+
+      if (finalTranscript) {
+        const transcriptEntry = {
+          id: Date.now(),
+          speaker_name: user?.name || 'You',
+          text: finalTranscript.trim(),
+          timestamp: new Date().toISOString(),
+          confidence: event.results[event.results.length - 1][0].confidence || 0.9
+        };
+
+        setTranscript(prev => [...prev, transcriptEntry]);
+        
+        // Save to database and broadcast
+        await saveTranscriptSegment(transcriptEntry);
       }
     };
-    
-    setRecognition(recognition);
-  }, [user, meetingInfo, isTranscribing, roomId]);
+
+    recognitionInstance.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      setIsTranscribing(false);
+    };
+
+    recognitionInstance.onend = () => {
+      if (transcriptionEnabled && isTranscribing) {
+        // Restart if still enabled
+        setTimeout(() => {
+          try {
+            recognitionInstance.start();
+          } catch (error) {
+            console.error('Error restarting speech recognition:', error);
+            setIsTranscribing(false);
+          }
+        }, 1000);
+      }
+    };
+
+    setRecognition(recognitionInstance);
+
+    if (transcriptionEnabled) {
+      try {
+        recognitionInstance.start();
+        setIsTranscribing(true);
+      } catch (error) {
+        console.error('Error starting speech recognition:', error);
+      }
+    }
+  }, [user, meetingInfo, transcriptionEnabled]);
 
   // Save transcript segment
   const saveTranscriptSegment = async (transcriptEntry) => {
     try {
       await makeAuthenticatedRequest(`/webrtc/room/${roomId}/transcript`, {
         method: 'POST',
-        body: JSON.stringify({
-          speaker_name: transcriptEntry.speaker_name,
-          text: transcriptEntry.text,
-          confidence: 1.0
-        })
+        body: JSON.stringify(transcriptEntry)
       });
+
+      // Broadcast to other participants
+      if (socketRef.current) {
+        socketRef.current.emit('transcript-update', {
+          room_id: roomId,
+          transcript: transcriptEntry
+        });
+      }
     } catch (error) {
       console.error('Error saving transcript:', error);
     }
@@ -428,8 +447,8 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     if (localStream) {
       const videoTrack = localStream.getVideoTracks()[0];
       if (videoTrack) {
-        videoTrack.enabled = !isVideoEnabled;
-        setIsVideoEnabled(!isVideoEnabled);
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoEnabled(videoTrack.enabled);
       }
     }
   };
@@ -438,21 +457,57 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     if (localStream) {
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) {
-        audioTrack.enabled = !isAudioEnabled;
-        setIsAudioEnabled(!isAudioEnabled);
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsAudioEnabled(audioTrack.enabled);
       }
     }
   };
 
-  const toggleTranscription = () => {
-    if (recognition) {
-      if (isTranscribing) {
-        recognition.stop();
-        setIsTranscribing(false);
-      } else {
-        recognition.start();
-        setIsTranscribing(true);
+  // Host-only transcription toggle
+  const toggleTranscriptionForAll = async () => {
+    if (!isHost) return;
+    
+    const newEnabled = !transcriptionEnabled;
+    
+    try {
+      const response = await makeAuthenticatedRequest(`/webrtc/room/${roomId}/transcription`, {
+        method: 'POST',
+        body: JSON.stringify({ enabled: newEnabled })
+      });
+      
+      if (response.ok) {
+        setTranscriptionEnabled(newEnabled);
+        
+        // Notify all participants via socket
+        if (socketRef.current) {
+          socketRef.current.emit('transcription-toggled', {
+            room_id: roomId,
+            enabled: newEnabled,
+            host_name: user?.name || 'Host'
+          });
+        }
+        
+        // Update local transcription
+        if (newEnabled && !isTranscribing && recognition) {
+          recognition.start();
+          setIsTranscribing(true);
+        } else if (!newEnabled && isTranscribing && recognition) {
+          recognition.stop();
+          setIsTranscribing(false);
+        }
       }
+    } catch (error) {
+      console.error('Error toggling transcription:', error);
+    }
+  };
+
+  // Updated transcription toggle (only for display, actual control is host-only)
+  const toggleTranscription = () => {
+    if (isHost) {
+      toggleTranscriptionForAll();
+    } else {
+      // Show info that only host can control
+      alert('Only the host can control transcription for all participants');
     }
   };
 
@@ -467,61 +522,67 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
   };
 
   const togglePin = (socketId) => {
-    if (pinnedParticipant === socketId) {
-      setPinnedParticipant(null);
-    } else {
-      setPinnedParticipant(socketId);
-    }
+    setPinnedParticipant(pinnedParticipant === socketId ? null : socketId);
   };
 
-  // Leave meeting
+  // Leave meeting function
   const leaveMeeting = async () => {
     try {
-      console.log('🚪 Leaving meeting...');
-      
-      if (recognition) {
-        recognition.stop();
-      }
-      
-      // Save final transcript
-      if (transcript.length > 0) {
+      // Save transcript if host is ending the meeting
+      if (isHost && transcript.length > 0) {
         const fullTranscript = transcript
-          .map(entry => `${entry.speaker_name}: ${entry.text}`)
+          .map(entry => `${entry.speaker_name} (${new Date(entry.timestamp).toLocaleTimeString()}): ${entry.text}`)
           .join('\n\n');
         
-        try {
-          await makeAuthenticatedRequest(`/webrtc/room/${roomId}/finalize`, {
-            method: 'POST',
-            body: JSON.stringify({
-              transcript: fullTranscript,
-              speakers: [...new Set(transcript.map(t => t.speaker_name))]
-            })
-          });
-        } catch (error) {
-          console.error('Error saving final transcript:', error);
-        }
+        await makeAuthenticatedRequest(`/webrtc/room/${roomId}/finalize`, {
+          method: 'POST',
+          body: JSON.stringify({
+            transcript: fullTranscript,
+            speakers: [...new Set(transcript.map(t => t.speaker_name))]
+          })
+        });
       }
       
-      // Close peer connections
-      peerConnections.current.forEach(pc => pc.close());
-      peerConnections.current.clear();
+      // If host, end meeting for everyone
+      if (isHost) {
+        const endResponse = await makeAuthenticatedRequest(`/webrtc/room/${roomId}/end`, {
+          method: 'POST'
+        });
+        
+        if (endResponse.ok) {
+          const endData = await endResponse.json();
+          
+          // Notify all participants via socket
+          if (socketRef.current) {
+            socketRef.current.emit('meeting-ended', {
+              room_id: roomId,
+              host_name: user?.name || 'Host',
+              meeting_data: endData
+            });
+          }
+        }
+      } else {
+        // Participant leaving
+        await makeAuthenticatedRequest(`/webrtc/room/${roomId}/leave`, {
+          method: 'POST'
+        });
+      }
       
-      // Stop local stream
+      // Cleanup
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
       
-      // Leave room via socket
+      // Disconnect from signaling
       if (socketRef.current) {
         socketRef.current.emit('leave-room', { room_id: roomId });
         socketRef.current.disconnect();
-        socketRef.current = null;
       }
       
-      // Leave via API
-      await makeAuthenticatedRequest(`/webrtc/room/${roomId}/leave`, {
-        method: 'POST'
-      });
+      // Stop transcription
+      if (recognition && isTranscribing) {
+        recognition.stop();
+      }
       
       onLeave();
     } catch (error) {
@@ -532,48 +593,25 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   // Initialize everything
   useEffect(() => {
-    const initialize = async () => {
-      console.log('🚀 Initializing WebRTC meeting...');
-      
-      // Step 1: Get media first
-      const stream = await initializeMedia();
-      if (!stream) {
-        console.error('❌ Failed to initialize media');
-        return;
-      }
-      
-      // Step 2: Initialize speech recognition
-      initializeTranscription();
-      
-      // Step 3: Connect to socket with stream ready
-      setTimeout(() => {
-        initializeSocket(stream);
-      }, 500);
-    };
+    initializeMedia();
     
-    initialize();
-    
-    // Cleanup
     return () => {
-      console.log('🧹 Cleaning up WebRTC meeting...');
-      
-      if (recognition) {
-        recognition.stop();
-      }
-      
-      peerConnections.current.forEach(pc => pc.close());
-      peerConnections.current.clear();
-      
+      // Cleanup on unmount
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
       
+      peerConnections.current.forEach(pc => pc.close());
+      
       if (socketRef.current) {
         socketRef.current.disconnect();
-        socketRef.current = null;
+      }
+      
+      if (recognition) {
+        recognition.stop();
       }
     };
-  }, []);
+  }, [initializeMedia]);
 
   // Scroll transcript to bottom
   useEffect(() => {
@@ -584,25 +622,30 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   // Calculate grid layout
   const getGridLayout = () => {
-    const totalParticipants = remoteStreams.size + 1;
+    const totalParticipants = remoteStreams.size + 1; // +1 for local user
     
     if (pinnedParticipant) {
-      return { main: { cols: 1, rows: 1 }, sidebar: { cols: 1, rows: Math.min(4, totalParticipants - 1) } };
+      return {
+        main: { cols: 1, rows: 1 },
+        sidebar: { cols: 1, rows: Math.min(totalParticipants - 1, 3) }
+      };
     }
     
-    if (totalParticipants <= 2) return { main: { cols: 2, rows: 1 } };
-    if (totalParticipants <= 4) return { main: { cols: 2, rows: 2 } };
-    if (totalParticipants <= 6) return { main: { cols: 3, rows: 2 } };
-    return { main: { cols: 3, rows: 3 } };
+    if (totalParticipants <= 4) {
+      return { main: { cols: 2, rows: 2 } };
+    } else if (totalParticipants <= 9) {
+      return { main: { cols: 3, rows: 3 } };
+    } else {
+      return { main: { cols: 4, rows: 3 } };
+    }
   };
 
   if (!isConnected && !connectionError) {
     return (
       <div className="h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center text-white">
-          <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p>Connecting to meeting...</p>
-          <p className="text-sm text-gray-400 mt-2">Room: {roomId}</p>
         </div>
       </div>
     );
@@ -612,14 +655,11 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
     return (
       <div className="h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center text-white max-w-md">
-          <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Phone className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-semibold mb-2">Connection Error</h2>
-          <p className="text-gray-300 mb-4">{connectionError}</p>
+          <h2 className="text-xl font-semibold mb-4">Connection Error</h2>
+          <p className="mb-6">{connectionError}</p>
           <button
             onClick={onLeave}
-            className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+            className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
           >
             Go Back
           </button>
@@ -632,12 +672,47 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col">
+      {/* Meeting ended modal */}
+      {showMeetingEndedModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md mx-4 text-center">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <PhoneOff className="w-8 h-8 text-red-600 dark:text-red-400" />
+            </div>
+            
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Meeting Ended
+            </h3>
+            
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              The meeting has been ended by {meetingEndedBy}.
+              {finalMeetingData?.participant_meetings_created > 0 && (
+                <span className="block mt-2 text-sm">
+                  The meeting has been saved to your recent meetings.
+                </span>
+              )}
+            </p>
+            
+            <button
+              onClick={() => {
+                setShowMeetingEndedModal(false);
+                onLeave();
+              }}
+              className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
           <div>
-            <h1 className="text-white font-semibold">
-              {meetingInfo?.title || `Room ${roomId}`}
+            <h1 className="text-white font-semibold flex items-center space-x-2">
+              <span>{meetingInfo?.title || `Room ${roomId}`}</span>
+              {isHost && <Crown className="w-4 h-4 text-yellow-400" />}
             </h1>
             <p className="text-gray-300 text-sm">
               Room ID: {roomId} • {remoteStreams.size + 1} participants
@@ -664,22 +739,31 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
           <button
             onClick={toggleTranscription}
             className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
-              isTranscribing
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-700 hover:bg-gray-600 text-white'
+              transcriptionEnabled
+                ? isTranscribing
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-white cursor-not-allowed'
             }`}
+            title={
+              isHost 
+                ? (transcriptionEnabled ? 'Disable transcription for all' : 'Enable transcription for all')
+                : 'Only host can control transcription'
+            }
           >
             <MessageSquare className="w-4 h-4" />
-            <span>{isTranscribing ? 'Recording' : 'Transcribe'}</span>
+            <span>
+              {!transcriptionEnabled ? 'Disabled' : isTranscribing ? 'Recording' : 'Enabled'}
+            </span>
+            {isHost && <Crown className="w-3 h-3 text-yellow-400" />}
           </button>
         </div>
       </div>
 
       {/* Main content */}
       <div className="flex-1 flex">
-        {/* Video area */}
+        {/* Video grid */}
         <div className="flex-1 relative">
-          {/* Video grid */}
           <div 
             className="h-full grid gap-2 p-2" 
             style={{
@@ -715,10 +799,9 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
               <div key={socketId} className="relative bg-black rounded-lg overflow-hidden group">
                 <video
                   ref={el => {
-                    if (el && stream) {
-                      el.srcObject = stream;
+                    if (el) {
                       remoteVideosRef.current.set(socketId, el);
-                      console.log(`✅ Set video element for ${userName}`);
+                      el.srcObject = stream;
                     }
                   }}
                   autoPlay
@@ -738,7 +821,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
             ))}
           </div>
             
-          {/* Video controls */}
+          {/* Controls */}
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-4 bg-black bg-opacity-50 px-6 py-3 rounded-full">
             <button
               onClick={toggleAudio}
@@ -771,7 +854,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
           </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Participants sidebar */}
         {showParticipants && (
           <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
             <div className="p-3 border-b border-gray-700">
@@ -780,7 +863,7 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
               </h3>
             </div>
 
-            {/* Live transcript */}
+            {/* Transcript section */}
             <div className="flex-1 flex flex-col">
               <div className="p-3 border-b border-gray-700">
                 <h3 className="text-white font-semibold">Live Transcript</h3>

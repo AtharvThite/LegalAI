@@ -315,15 +315,87 @@ def end_room(room_id):
     if meeting.get('host_id') != user_id:
         return jsonify({'error': 'Only host can end the meeting'}), 403
     
+    # Get final transcript before ending
+    meeting_uuid = meeting.get('id')
+    transcript_segments = list(db.transcript_segments.find({
+        'meeting_id': meeting_uuid
+    }).sort('timestamp', 1))
+    
+    # Build consolidated transcript
+    full_transcript = '\n\n'.join([
+        f"{segment['speaker_name']} ({segment['timestamp']}): {segment['text']}"
+        for segment in transcript_segments
+    ])
+    
     # End meeting
     end_time = datetime.utcnow()
     db.meetings.update_one(
         {'room_id': room_id.upper()},
         {'$set': {
-            'status': 'completed',  # Mark as completed, not just ended
+            'status': 'completed',
             'ended_at': end_time
         }}
     )
+    
+    # Save transcript for the main meeting record
+    if full_transcript:
+        db.transcriptions.update_one(
+            {'meeting_id': meeting_uuid},
+            {'$set': {
+                'meeting_id': meeting_uuid,
+                'transcript': full_transcript,
+                'speakers': list(set([s['speaker_name'] for s in transcript_segments])),
+                'language': meeting.get('language', 'en-US'),
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }},
+            upsert=True
+        )
+    
+    # Create individual meeting records for all participants
+    participants = meeting.get('participants', [])
+    saved_meeting_ids = []
+    
+    for participant in participants:
+        if participant['user_id'] != user_id:  # Skip host, they already have the meeting
+            # Create individual meeting record for participant
+            participant_meeting_id = str(uuid.uuid4())
+            participant_meeting = {
+                'id': participant_meeting_id,
+                'user_id': participant['user_id'],
+                'title': meeting.get('title', f'Meeting Room {room_id}'),
+                'description': meeting.get('description', ''),
+                'folder_id': 'recent',  # Save to recent folder for participants
+                'language': meeting.get('language', 'en-US'),
+                'meeting_type': 'webrtc_participant',  # Mark as participant copy
+                'original_meeting_id': meeting_uuid,  # Reference to original
+                'room_id': room_id.upper(),
+                'host_name': meeting.get('host_name', ''),
+                'status': 'completed',
+                'created_at': meeting.get('created_at'),
+                'started_at': meeting.get('started_at'),
+                'ended_at': end_time,
+                'participants': participants,  # Keep all participants info
+                'settings': meeting.get('settings', {})
+            }
+            
+            result = db.meetings.insert_one(participant_meeting)
+            saved_meeting_ids.append(participant_meeting_id)
+            
+            # Copy transcript for participant
+            if full_transcript:
+                db.transcriptions.update_one(
+                    {'meeting_id': participant_meeting_id},
+                    {'$set': {
+                        'meeting_id': participant_meeting_id,
+                        'transcript': full_transcript,
+                        'speakers': list(set([s['speaker_name'] for s in transcript_segments])),
+                        'language': meeting.get('language', 'en-US'),
+                        'created_at': datetime.utcnow(),
+                        'updated_at': datetime.utcnow()
+                    }},
+                    upsert=True
+                )
     
     # Mark all participants as offline
     db.meetings.update_one(
@@ -338,7 +410,40 @@ def end_room(room_id):
     return jsonify({
         'message': 'Meeting ended successfully',
         'ended_at': end_time.isoformat() + 'Z',
-        'meeting_id': meeting.get('id')
+        'meeting_id': meeting_uuid,
+        'participant_meetings_created': len(saved_meeting_ids),
+        'full_transcript': full_transcript[:200] + '...' if len(full_transcript) > 200 else full_transcript
+    })
+
+# Add new endpoint for host to control transcription
+@webrtc_bp.route('/room/<room_id>/transcription', methods=['POST'])
+@jwt_required()
+def toggle_room_transcription(room_id):
+    user_id = get_jwt_identity()
+    db = get_mongo()
+    data = request.json
+    
+    meeting = db.meetings.find_one({'room_id': room_id.upper()})
+    if not meeting:
+        return jsonify({'error': 'Room not found'}), 404
+    
+    # Only host can control transcription
+    if meeting.get('host_id') != user_id:
+        return jsonify({'error': 'Only host can control transcription'}), 403
+    
+    transcription_enabled = data.get('enabled', False)
+    
+    # Update meeting settings
+    db.meetings.update_one(
+        {'room_id': room_id.upper()},
+        {'$set': {
+            'settings.auto_transcription': transcription_enabled
+        }}
+    )
+    
+    return jsonify({
+        'transcription_enabled': transcription_enabled,
+        'message': f'Transcription {"enabled" if transcription_enabled else "disabled"}'
     })
 
 @webrtc_bp.route('/room/<room_id>/info', methods=['GET'])

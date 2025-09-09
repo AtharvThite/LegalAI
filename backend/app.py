@@ -179,6 +179,42 @@ def on_leave_room(data):
         
         print(f'User {user_info["user_name"]} left room {room_id}')
 
+@socketio.on('meeting-ended')
+def on_meeting_ended(data):
+    room_id = data.get('room_id')
+    host_name = data.get('host_name', 'Host')
+    meeting_data = data.get('meeting_data', {})
+    
+    print(f'Meeting {room_id} ended by host')
+    
+    # Notify all participants in the room
+    emit('meeting-ended', {
+        'room_id': room_id,
+        'host_name': host_name,
+        'ended_at': datetime.utcnow().isoformat() + 'Z',
+        'message': f'Meeting ended by {host_name}',
+        'meeting_data': meeting_data
+    }, room=room_id, include_self=False)
+    
+    # Clean up room
+    if room_id in active_rooms:
+        del active_rooms[room_id]
+        print(f'Cleaned up room: {room_id}')
+
+@socketio.on('transcription-toggled')
+def on_transcription_toggled(data):
+    room_id = data.get('room_id')
+    enabled = data.get('enabled', False)
+    host_name = data.get('host_name', 'Host')
+    
+    print(f'Transcription {"enabled" if enabled else "disabled"} in room {room_id}')
+    
+    # Notify all participants about transcription status
+    emit('transcription-status-changed', {
+        'enabled': enabled,
+        'message': f'Transcription {"enabled" if enabled else "disabled"} by {host_name}'
+    }, room=room_id, include_self=False)
+
 # Authentication routes
 @app.route('/api/auth/register', methods=['POST'])
 def register():
