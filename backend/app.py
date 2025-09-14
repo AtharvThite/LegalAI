@@ -14,22 +14,35 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Configure CORS
+# Production/Development environment detection
+IS_PRODUCTION = os.getenv('FLASK_ENV') == 'production' or os.getenv('RENDER') is not None
+
+# Configure CORS for production and development
+if IS_PRODUCTION:
+    allowed_origins = [
+        'https://huddle-gathersmarter.netlify.app',
+        'https://huddle-gathersmarter.netlify.app/',
+        'https://huddle-bugz.onrender.com'
+    ]
+else:
+    allowed_origins = ['http://localhost:3000']
+
 CORS(app, 
-     origins=['http://localhost:3000'], 
+     origins=allowed_origins, 
      supports_credentials=True,
      allow_headers=['Content-Type', 'Authorization'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 
-# Initialize Socket.IO with proper CORS
+# Initialize Socket.IO with proper CORS for production
 socketio = SocketIO(app, 
-                   cors_allowed_origins="http://localhost:3000",
-                   logger=False,  # Disable excessive logging
+                   cors_allowed_origins=allowed_origins,
+                   logger=False,
                    engineio_logger=False,
-                   transports=['websocket', 'polling'])
+                   transports=['websocket', 'polling'],
+                   async_mode='threading')
 
 app.config["MONGO_URI"] = os.getenv("MONGODB_URI", "mongodb://localhost:27017/huddle")
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this")
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET", "your-secret-key-change-this")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
 
 # Initialize MongoDB
@@ -357,6 +370,25 @@ except ImportError as e:
 def health_check():
     return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
 
+@app.route('/', methods=['GET'])
+def root():
+    return jsonify({'message': 'Huddle API is running', 'status': 'healthy'})
+
 if __name__ == "__main__":
     print("Starting Huddle backend with Socket.IO support...")
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    port = int(os.getenv('PORT', 5000))
+    
+    if IS_PRODUCTION:
+        # Production configuration
+        socketio.run(app, 
+                    host='0.0.0.0', 
+                    port=port,
+                    debug=False,
+                    allow_unsafe_werkzeug=True)
+    else:
+        # Development configuration
+        socketio.run(app, 
+                    debug=True, 
+                    host='0.0.0.0', 
+                    port=port,
+                    allow_unsafe_werkzeug=True)

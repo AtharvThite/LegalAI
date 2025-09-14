@@ -449,19 +449,23 @@ def toggle_room_transcription(room_id):
 @webrtc_bp.route('/room/<room_id>/info', methods=['GET'])
 def get_room_info(room_id):
     """Get basic room info (doesn't require authentication for joining)"""
-    db = get_mongo()
-    
-    meeting = db.meetings.find_one({'room_id': room_id.upper()})
-    if not meeting:
-        return jsonify({'error': 'Room not found'}), 404
-    
-    return jsonify({
-        'room_id': meeting['room_id'],
-        'meeting_id': meeting.get('id'),
-        'title': meeting.get('title', ''),
-        'host_name': meeting.get('host_name', ''),
-        'status': meeting.get('status', ''),
-        'participant_count': len([p for p in meeting.get('participants', []) if p.get('is_online', False)]),
-        'max_participants': meeting.get('settings', {}).get('participant_limit', 10),
-        'created_at': meeting['created_at'].isoformat() + 'Z' if meeting.get('created_at') else None
-    })
+    try:
+        db = get_mongo()
+        
+        meeting = db.meetings.find_one({'room_id': room_id.upper()})
+        if not meeting:
+            return jsonify({'error': 'Room not found'}), 404
+        
+        return jsonify({
+            'room_id': meeting['room_id'],
+            'meeting_id': meeting.get('id'),
+            'title': meeting.get('title', ''),
+            'host_name': meeting.get('host_name', ''),
+            'status': meeting.get('status', ''),
+            'participant_count': len([p for p in meeting.get('participants', []) if p.get('is_online', False)]),
+            'max_participants': meeting.get('settings', {}).get('participant_limit', 10),
+            'created_at': meeting['created_at'].isoformat() + 'Z' if meeting.get('created_at') else None
+        })
+    except Exception as e:
+        print(f"Error getting room info: {e}")
+        return jsonify({'error': 'Internal server error'}), 500

@@ -15,7 +15,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
-  const API_BASE = 'http://localhost:5000/api';
+  // Use environment variable or fallback to production URL
+  const API_BASE = process.env.REACT_APP_API_URL || 'https://huddle-bugz.onrender.com/api';
 
   useEffect(() => {
     if (token) {
@@ -224,7 +225,8 @@ export const AuthProvider = ({ children }) => {
     makeAuthenticatedRequest,
     downloadFile,
     updateProfile,
-    isAuthenticated: !!user && !!token
+    isAuthenticated: !!user && !!token,
+    API_BASE // Export API_BASE for components that need direct access
   };
 
   return (
