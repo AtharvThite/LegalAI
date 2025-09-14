@@ -11,7 +11,7 @@ const JoinMeeting = ({ roomId, onJoin, onBack }) => {
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [audioEnabled, setAudioEnabled] = useState(true);
   
-  const { makeAuthenticatedRequest, user } = useAuth();
+  const { makeAuthenticatedRequest, user, API_BASE } = useAuth();
 
   useEffect(() => {
     fetchRoomInfo();
