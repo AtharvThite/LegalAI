@@ -1,11 +1,5 @@
 # Huddle: AI-Powered Meeting Intelligence Platform  
 
-![GitHub repo size](https://img.shields.io/github/repo-size/AryanTikam/Huddle)  
-![GitHub contributors](https://img.shields.io/github/contributors/AryanTikam/Huddle)  
-![GitHub stars](https://img.shields.io/github/stars/AryanTikam/Huddle?style=social)  
-![GitHub forks](https://img.shields.io/github/forks/AryanTikam/Huddle?style=social)  
-![License](https://img.shields.io/github/license/AryanTikam/Huddle)  
-
 Huddle is an **AI-powered meeting intelligence platform** designed to revolutionize how organizations capture, process, and utilize spoken content.  
 It provides seamless **recording, multilingual transcription, summarization, speaker recognition, and actionable insights** – helping teams stay productive in remote-first environments.  
 
@@ -31,5 +25,13 @@ It provides seamless **recording, multilingual transcription, summarization, spe
 ```bash
 git clone https://github.com/AryanTikam/Huddle.git
 cd Huddle
+```
 
-
+### 2️⃣ Backend Setup (Flask + Python)
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate   # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
