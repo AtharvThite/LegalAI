@@ -35,3 +35,10 @@ source venv/bin/activate   # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python app.py
 ```
+
+### 3️⃣ Frontend Setup (React)
+```bash
+cd frontend
+npm install
+npm start
+```
