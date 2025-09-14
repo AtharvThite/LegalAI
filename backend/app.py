@@ -154,40 +154,47 @@ def on_join_room(data):
     user_id = data.get('user_id') 
     user_name = data.get('user_name')
     
-    print(f'User {user_name} joining room {room_id}')
+    print(f'[SOCKET] User {user_name} (ID: {user_id}) joining room {room_id}')
+    print(f'[SOCKET] Request SID: {request.sid}')
     
     if not room_id:
-        emit('error', {'message': 'Room ID required'})
+        print(f'[SOCKET] Error: No room_id provided')
+        emit('error', {'message': 'Room ID is required'})
         return
     
+    # Ensure consistent room ID formatting
+    room_id = room_id.upper()
+    
     join_room(room_id)
+    print(f'[SOCKET] Joined socket room: {room_id}')
     
     # Initialize room if not exists
     if room_id not in active_rooms:
         active_rooms[room_id] = {}
-        print(f'Created new room: {room_id}')
+        print(f'[SOCKET] Created new room: {room_id}')
     
     # Add user to room with initial mute status
     active_rooms[room_id][request.sid] = {
         'user_id': user_id,
         'user_name': user_name,
-        'is_muted': True  # Default to muted for privacy
+        'is_muted': True  # Default to muted
     }
     
-    print(f'Room {room_id} now has {len(active_rooms[room_id])} participants')
+    print(f'[SOCKET] Room {room_id} now has {len(active_rooms[room_id])} participants')
+    print(f'[SOCKET] Current participants: {list(active_rooms[room_id].keys())}')
     
     # Get existing users in room (excluding the new user)
     existing_users = []
     for sid, user_info in active_rooms[room_id].items():
-        if sid != request.sid:
+        if sid != request.sid:  # Don't include the new user
             existing_users.append({
-                'socket_id': sid,
                 'user_id': user_info['user_id'],
                 'user_name': user_info['user_name'],
+                'socket_id': sid,
                 'is_muted': user_info.get('is_muted', True)
             })
     
-    print(f'Sending {len(existing_users)} existing users to new participant')
+    print(f'[SOCKET] Sending {len(existing_users)} existing users to new participant')
     
     # Send existing users to the new user
     emit('existing-users', existing_users)
@@ -199,6 +206,8 @@ def on_join_room(data):
         'socket_id': request.sid,
         'is_muted': True  # Default to muted
     }, room=room_id, include_self=False)
+    
+    print(f'[SOCKET] Notified existing users about new participant')
 
 @socketio.on('offer')
 def on_offer(data):

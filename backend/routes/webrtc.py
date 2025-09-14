@@ -83,14 +83,17 @@ def join_room(room_id):
     db = get_mongo()
     data = request.json or {}
     
+    # Ensure consistent room ID formatting
+    room_id = room_id.upper()
+    
     # Find meeting by room_id
-    meeting = db.meetings.find_one({'room_id': room_id.upper()})
+    meeting = db.meetings.find_one({'room_id': room_id})
     if not meeting:
         return jsonify({'error': 'Room not found'}), 404
     
     # Check if meeting is still active
     if meeting.get('status') == 'ended':
-        return jsonify({'error': 'Meeting has ended'}), 400
+        return jsonify({'error': 'Meeting has ended'}), 403
     
     # Get user info
     user = db.users.find_one({'_id': ObjectId(user_id)})
@@ -98,10 +101,12 @@ def join_room(room_id):
         return jsonify({'error': 'User not found'}), 404
     
     # Check if user is already in the meeting
-    existing_participant = None
-    for participant in meeting.get('participants', []):
+    existing_participant_index = None
+    participants = meeting.get('participants', [])
+    
+    for i, participant in enumerate(participants):
         if participant['user_id'] == user_id:
-            existing_participant = participant
+            existing_participant_index = i
             break
     
     participant_data = {
@@ -115,27 +120,28 @@ def join_room(room_id):
     }
     
     # Update participant list
-    if existing_participant:
+    if existing_participant_index is not None:
         # Update existing participant
         db.meetings.update_one(
-            {'room_id': room_id.upper(), 'participants.user_id': user_id},
+            {'room_id': room_id},
             {'$set': {
-                'participants.$.joined_at': datetime.utcnow(),
-                'participants.$.is_online': True,
-                'participants.$.name': participant_data['name']
+                f'participants.{existing_participant_index}.joined_at': datetime.utcnow(),
+                f'participants.{existing_participant_index}.is_online': True,
+                f'participants.{existing_participant_index}.name': participant_data['name'],
+                f'participants.{existing_participant_index}.left_at': None
             }}
         )
     else:
         # Add new participant
         db.meetings.update_one(
-            {'room_id': room_id.upper()},
+            {'room_id': room_id},
             {'$push': {'participants': participant_data}}
         )
     
     # Start meeting if it's the first person joining
     if meeting.get('status') == 'waiting':
         db.meetings.update_one(
-            {'room_id': room_id.upper()},
+            {'room_id': room_id},
             {'$set': {
                 'status': 'active',
                 'started_at': datetime.utcnow()
@@ -143,13 +149,20 @@ def join_room(room_id):
         )
     
     # Get updated meeting
-    updated_meeting = db.meetings.find_one({'room_id': room_id.upper()})
+    updated_meeting = db.meetings.find_one({'room_id': room_id})
     updated_meeting['_id'] = str(updated_meeting['_id'])
     
     # Format datetime fields
     for field in ['created_at', 'started_at', 'ended_at']:
         if updated_meeting.get(field):
-            updated_meeting[field] = updated_meeting[field].isoformat() + 'Z'
+            if isinstance(updated_meeting[field], datetime):
+                updated_meeting[field] = updated_meeting[field].isoformat() + 'Z'
+    
+    # Format participant timestamps
+    for participant in updated_meeting.get('participants', []):
+        for field in ['joined_at', 'left_at']:
+            if participant.get(field) and isinstance(participant[field], datetime):
+                participant[field] = participant[field].isoformat() + 'Z'
     
     return jsonify({
         'meeting': updated_meeting,

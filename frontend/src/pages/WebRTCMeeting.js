@@ -133,136 +133,113 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
 
   // Initialize Socket.IO connection
   const initializeSocket = useCallback((stream) => {
-    try {
-      // Use the API_BASE but replace /api with nothing for socket connection
-      const socketUrl = API_BASE.replace('/api', '');
+    console.log('[SOCKET] Initializing socket connection...');
+    
+    const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || API_BASE.replace('/api', '');
+    console.log('[SOCKET] Connecting to:', SOCKET_URL);
+    
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+      rememberUpgrade: true
+    });
+    
+    socketRef.current = socket;
+    
+    socket.on('connect', () => {
+      console.log('[SOCKET] Connected with ID:', socket.id);
+      setIsConnected(true);
+      setConnectionError('');
       
-      console.log('Connecting to socket at:', socketUrl);
+      // Join the room with consistent room ID formatting
+      const joinData = {
+        room_id: roomId.toUpperCase(), // Ensure uppercase
+        user_id: user.id,
+        user_name: user.name
+      };
       
-      const socket = io(socketUrl, {
-        transports: ['websocket', 'polling'],
-        upgrade: true,
-        rememberUpgrade: true,
-        timeout: 20000,
-        forceNew: true
-      });
-
-      socket.on('connect', () => {
-        console.log('Connected to signaling server');
-        setIsConnected(true);
-        setConnectionError('');
-        
-        // Join the room
-        socket.emit('join-room', {
-          room_id: roomId,
-          user_id: user?.id,
-          user_name: user?.name || 'Anonymous'
-        });
-      });
-
-      socket.on('existing-users', async (users) => {
-        console.log('👥 Existing users in room:', users);
-        
-        for (const userInfo of users) {
-          await createPeerConnection(
-            userInfo.socket_id, 
-            userInfo.user_name, 
-            true, // I am the initiator
-            stream
-          );
-        }
-      });
-
-      socket.on('user-joined', async (userInfo) => {
-        console.log('👋 User joined:', userInfo.user_name);
-        
-        await createPeerConnection(
-          userInfo.socket_id, 
-          userInfo.user_name, 
-          false, // They are the initiator
-          stream
-        );
-      });
-
-      socket.on('user-left', (data) => {
-        console.log('👋 User left:', data.socket_id);
-        handleUserLeft(data.socket_id);
-      });
-
-      socket.on('offer', handleOffer);
-      socket.on('answer', handleAnswer);
-      socket.on('ice-candidate', handleIceCandidate);
-      
-      // Handle transcript updates
-      socket.on('transcript-update', (data) => {
-        setTranscript(prev => [...prev, data]);
-      });
-
-      // Handle mute status updates
-      socket.on('participant-mute-status', (data) => {
-        console.log('🔇 Participant mute status update:', data);
-        setParticipantMuteStatus(prev => {
-          const newMap = new Map(prev);
-          newMap.set(data.socket_id, data.is_muted);
-          return newMap;
-        });
-      });
-
-      // Meeting end events
-      socket.on('meeting-ended', (data) => {
-        console.log('📢 Meeting ended by host:', data);
-        setMeetingEndedBy(data.host_name);
-        setFinalMeetingData(data.meeting_data);
-        setShowMeetingEndedModal(true);
-        
-        // Stop all media streams
-        if (localStream) {
-          localStream.getTracks().forEach(track => track.stop());
-        }
-        
-        // Stop transcription
-        if (recognition && isTranscribing) {
-          recognition.stop();
-          setIsTranscribing(false);
-        }
-      });
-
-      socket.on('transcription-status-changed', (data) => {
-        console.log('📝 Transcription status changed:', data);
-        setTranscriptionEnabled(data.enabled);
-        
-        // Auto-start/stop transcription based on host control
-        if (data.enabled && !isTranscribing && recognition) {
-          recognition.start();
-          setIsTranscribing(true);
-        } else if (!data.enabled && isTranscribing && recognition) {
-          recognition.stop();
-          setIsTranscribing(false);
-        }
-      });
-
-      socket.on('disconnect', () => {
-        console.log('Disconnected from signaling server');
-        setIsConnected(false);
-      });
-
-      socket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
-        setConnectionError('Failed to connect to meeting server. Please check your internet connection.');
-        setIsConnected(false);
-      });
-
-      // Initialize transcription after socket setup
-      if (transcriptionEnabled) {
-        initializeTranscription();
+      console.log('[SOCKET] Joining room with data:', joinData);
+      socket.emit('join-room', joinData);
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('[SOCKET] Connection error:', error);
+      setConnectionError('Failed to connect to meeting server');
+      setIsConnected(false);
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.log('[SOCKET] Disconnected:', reason);
+      setIsConnected(false);
+      if (reason === 'io server disconnect') {
+        socket.connect();
       }
-
-      return socket;
-    } catch (error) {
-      console.error('Failed to initialize socket:', error);
-      setConnectionError('Failed to initialize connection');
-    }
-  }, [roomId, user, transcriptionEnabled, isAudioEnabled]);
+    });
+    
+    // Handle existing users in the room
+    socket.on('existing-users', (users) => {
+      console.log('[SOCKET] Received existing users:', users);
+      setParticipants(users);
+      
+      // Create peer connections for existing users
+      users.forEach(async (user) => {
+        console.log('[SOCKET] Creating peer connection for existing user:', user.user_name);
+        await createPeerConnection(user.socket_id, user.user_name, true, stream);
+      });
+    });
+    
+    // Handle new user joining
+    socket.on('user-joined', async (data) => {
+      console.log('[SOCKET] New user joined:', data);
+      setParticipants(prev => [...prev, data]);
+      
+      // Create peer connection for new user (we are the initiator)
+      await createPeerConnection(data.socket_id, data.user_name, true, stream);
+    });
+    
+    // Handle user leaving
+    socket.on('user-left', (data) => {
+      console.log('[SOCKET] User left:', data);
+      handleUserLeft(data.socket_id);
+    });
+    
+    // WebRTC signaling handlers
+    socket.on('offer', handleOffer);
+    socket.on('answer', handleAnswer);
+    socket.on('ice-candidate', handleIceCandidate);
+    
+    // Transcription handlers
+    socket.on('transcript-broadcast', (data) => {
+      if (transcriptionEnabled) {
+        const transcriptEntry = {
+          id: Date.now(),
+          speaker: data.speaker_name,
+          text: data.text,
+          timestamp: new Date().toLocaleTimeString(),
+          confidence: data.confidence || 1.0
+        };
+        setTranscript(prev => [...prev, transcriptEntry]);
+      }
+    });
+    
+    socket.on('transcription-status-changed', (data) => {
+      console.log('[SOCKET] Transcription status changed:', data);
+      setTranscriptionEnabled(data.enabled);
+    });
+    
+    socket.on('meeting-ended', (data) => {
+      console.log('[SOCKET] Meeting ended by host:', data);
+      setShowMeetingEndedModal(true);
+      setMeetingEndedBy(data.host_name);
+      setFinalMeetingData(data.meeting_data);
+    });
+    
+    socket.on('error', (error) => {
+      console.error('[SOCKET] Socket error:', error);
+      setConnectionError(error.message || 'Socket connection error');
+    });
+    
+  }, [roomId, user, transcriptionEnabled]);
 
   // Create peer connection
   const createPeerConnection = useCallback(async (socketId, userName, isInitiator, stream) => {
@@ -840,6 +817,50 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
       if (recognition) {
         recognition.stop();
       }
+    };
+  }, []); // Remove dependencies to avoid re-initialization
+
+  // Make sure roomId is always uppercase throughout the component
+  useEffect(() => {
+    if (!roomId || !user || initializingRef.current) return;
+    
+    console.log('[MEETING] Initializing WebRTC meeting...');
+    console.log('[MEETING] Room ID:', roomId.toUpperCase()); // Ensure uppercase
+    console.log('[MEETING] User:', user);
+    
+    initializingRef.current = true;
+    
+    const initialize = async () => {
+      try {
+        // Initialize media first
+        const stream = await initializeMedia(isVideoEnabled, isAudioEnabled);
+        if (stream) {
+          // Initialize socket with media stream
+          initializeSocket(stream);
+          
+          // Initialize transcription if enabled
+          if (transcriptionEnabled) {
+            initializeTranscription();
+          }
+        }
+      } catch (error) {
+        console.error('[MEETING] Initialization failed:', error);
+        setConnectionError('Failed to initialize meeting');
+      }
+    };
+    
+    initialize();
+    
+    return () => {
+      console.log('[MEETING] Cleaning up...');
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      peerConnections.current.forEach(pc => pc.close());
+      peerConnections.current.clear();
     };
   }, []); // Remove dependencies to avoid re-initialization
 
