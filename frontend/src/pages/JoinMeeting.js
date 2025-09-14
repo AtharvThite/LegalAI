@@ -22,7 +22,7 @@ const JoinMeeting = ({ roomId, onJoin, onBack }) => {
 
   const fetchRoomInfo = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/webrtc/room/${roomId}/info`);
+      const response = await fetch(`${API_BASE}/webrtc/room/${roomId}/info`);
       if (response.ok) {
         const data = await response.json();
         setRoomInfo(data);
