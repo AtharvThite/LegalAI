@@ -43,6 +43,7 @@ socketio = SocketIO(app,
                    async_mode='threading')
 
 app.config["MONGO_URI"] = os.getenv("MONGODB_URI", "mongodb://localhost:27017/huddle")
+print(f"Connecting to MongoDB at {app.config['MONGO_URI']}")
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET", "your-secret-key-change-this")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=7)
 
