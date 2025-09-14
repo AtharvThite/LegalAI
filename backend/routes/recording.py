@@ -1,10 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-import speech_recognition as sr
-import io
-import wave
 from datetime import datetime
 import uuid
+import base64
 
 recording_bp = Blueprint('recording', __name__)
 
@@ -30,54 +28,38 @@ def start_recording():
     current_app.mongo.db.meetings.insert_one(meeting_data)
     return jsonify({'meeting_id': meeting_id, 'status': 'started'})
 
-@recording_bp.route('/process-audio', methods=['POST'])
+@recording_bp.route('/process-text', methods=['POST'])
 @jwt_required()
-def process_audio():
+def process_transcribed_text():
+    """Process text that was transcribed on the frontend"""
     user_id = get_jwt_identity()
-    meeting_id = request.form.get('meeting_id')
+    data = request.json
+    meeting_id = data.get('meeting_id')
+    transcript_text = data.get('text')
+    speaker = data.get('speaker', 'Speaker A')
+    confidence = data.get('confidence', 1.0)
     
-    if 'audio' not in request.files:
-        return jsonify({'error': 'No audio file'}), 400
+    if not transcript_text:
+        return jsonify({'error': 'No text provided'}), 400
     
-    audio_file = request.files['audio']
+    # Update meeting with new transcript
+    current_app.mongo.db.meetings.update_one(
+        {'id': meeting_id},
+        {'$push': {'transcript': {
+            'text': transcript_text, 
+            'speaker': speaker,
+            'timestamp': datetime.utcnow(),
+            'confidence': confidence
+        }}}
+    )
     
-    # Convert audio to text using speech recognition
-    r = sr.Recognizer()
-    
-    try:
-        # Read audio data
-        audio_data = audio_file.read()
-        audio_file_like = io.BytesIO(audio_data)
-        
-        with sr.AudioFile(audio_file_like) as source:
-            audio = r.record(source)
-            
-        # Get language setting from meeting
-        meeting = current_app.mongo.db.meetings.find_one({'id': meeting_id})
-        language = meeting.get('language', 'en-US')
-        
-        # Recognize speech
-        text = r.recognize_google(audio, language=language)
-        
-        # Update meeting with new transcript
-        current_app.mongo.db.meetings.update_one(
-            {'id': meeting_id},
-            {'$push': {'transcript': {'text': text, 'timestamp': datetime.utcnow()}}}
-        )
-        
-        return jsonify({'transcript': text, 'status': 'processed'})
-        
-    except sr.UnknownValueError:
-        return jsonify({'error': 'Could not understand audio'}), 400
-    except sr.RequestError as e:
-        return jsonify({'error': f'Recognition service error: {e}'}), 500
+    return jsonify({'status': 'processed', 'text': transcript_text})
 
 @recording_bp.route('/stop/<meeting_id>', methods=['POST'])
 @jwt_required()
 def stop_recording(meeting_id):
     user_id = get_jwt_identity()
     
-    # Get the meeting first to check when it started
     meeting = current_app.mongo.db.meetings.find_one({
         'id': meeting_id, 
         'user_id': user_id
@@ -88,7 +70,6 @@ def stop_recording(meeting_id):
     
     current_time = datetime.utcnow()
     
-    # Set the ended_at timestamp when stopping recording
     result = current_app.mongo.db.meetings.update_one(
         {'id': meeting_id, 'user_id': user_id},
         {'$set': {
@@ -99,7 +80,6 @@ def stop_recording(meeting_id):
     )
     
     if result.modified_count > 0:
-        # Calculate actual duration for logging
         start_time = meeting.get('created_at')
         if start_time:
             duration_seconds = (current_time - start_time).total_seconds()
