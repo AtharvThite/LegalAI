@@ -40,22 +40,22 @@ const MeetingChatbot = ({ meetingId }) => {
     try {
       const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/history`);
       if (response.ok) {
-        const history = await response.json();
-        const formattedMessages = history.flatMap(item => [
-          {
-            id: `q-${item._id}`,
-            type: 'user',
-            content: item.question,
-            timestamp: item.timestamp // <-- just use raw value
-          },
-          {
-            id: `a-${item._id}`,
-            type: 'bot',
-            content: item.answer,
-            timestamp: item.timestamp // <-- just use raw value
-          }
-        ]);
-        setMessages(formattedMessages);
+        const data = await response.json();
+        // Fix: Ensure history is an array
+        const history = Array.isArray(data.history) ? data.history : [];
+        const formattedHistory = history.map(chat => ({
+          id: chat._id,
+          type: 'user',
+          content: chat.message,
+          timestamp: new Date(chat.timestamp)
+        })).concat(history.map(chat => ({
+          id: chat._id + '_response',
+          type: 'bot',
+          content: chat.response,
+          timestamp: new Date(chat.timestamp)
+        }))).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        setMessages(formattedHistory);
       }
     } catch (error) {
       console.error('Failed to load chat history:', error);
@@ -81,7 +81,7 @@ const MeetingChatbot = ({ meetingId }) => {
       id: Date.now(),
       type: 'user',
       content: question,
-      timestamp: Date.now() // Use number
+      timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -91,7 +91,7 @@ const MeetingChatbot = ({ meetingId }) => {
     try {
       const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/chat`, {
         method: 'POST',
-        body: JSON.stringify({ question })
+        body: JSON.stringify({ message: question }) // Fix: Use 'message' key
       });
 
       if (response.ok) {
@@ -99,12 +99,26 @@ const MeetingChatbot = ({ meetingId }) => {
         const botMessage = {
           id: Date.now() + 1,
           type: 'bot',
-          content: data.answer,
-          timestamp: data.timestamp // Use raw value from backend
+          content: data.response,
+          timestamp: new Date(),
+          suggestions: data.suggestions
         };
         setMessages(prev => [...prev, botMessage]);
+        
+        // Update suggestions if provided
+        if (data.suggestions) {
+          setSuggestions(data.suggestions);
+        }
       } else {
-        throw new Error('Failed to get response');
+        const errorData = await response.json();
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: 'bot',
+          content: `Error: ${errorData.error || 'Failed to get response'}`,
+          timestamp: new Date(),
+          isError: true
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error('Failed to send message:', error);

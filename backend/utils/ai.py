@@ -1,12 +1,11 @@
 import os
-from dotenv import load_dotenv
+import json
 import google.generativeai as genai
+from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-import numpy as np
 from typing import List
-import json
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -38,28 +37,64 @@ def chunk_transcript(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
 
 def create_vector_store(meeting_id: str, transcript: str):
     """Create vector store for meeting transcript"""
-    chunks = chunk_transcript(transcript)
-    
-    # Create directory if it doesn't exist
-    os.makedirs("vector_stores", exist_ok=True)
-    
-    # Create FAISS vector store
-    vector_store = FAISS.from_texts(
-        chunks,
-        embeddings,
-        metadatas=[{"meeting_id": meeting_id, "chunk_id": i} for i in range(len(chunks))]
-    )
-    
-    # Save vector store
-    vector_store.save_local(f"vector_stores/{meeting_id}")
-    return vector_store
+    try:
+        chunks = chunk_transcript(transcript)
+        
+        # Create directory if it doesn't exist
+        os.makedirs("vector_stores", exist_ok=True)
+        
+        # Create FAISS vector store
+        vector_store = FAISS.from_texts(
+            chunks,
+            embeddings,
+            metadatas=[{"meeting_id": meeting_id, "chunk_id": i} for i in range(len(chunks))]
+        )
+        
+        # Save vector store
+        vector_store.save_local(f"vector_stores/{meeting_id}")
+        print(f"[AI] Vector store created and saved for meeting {meeting_id}")
+        return vector_store
+    except Exception as e:
+        print(f"[AI] Error creating vector store: {e}")
+        raise e
 
 def load_vector_store(meeting_id: str):
     """Load existing vector store"""
     try:
-        return FAISS.load_local(f"vector_stores/{meeting_id}", embeddings, allow_dangerous_deserialization=True)
-    except:
+        vector_store = FAISS.load_local(f"vector_stores/{meeting_id}", embeddings, allow_dangerous_deserialization=True)
+        print(f"[AI] Vector store loaded for meeting {meeting_id}")
+        return vector_store
+    except Exception as e:
+        print(f"[AI] Could not load vector store for meeting {meeting_id}: {e}")
         return None
+
+def generate_simple_chat_response(question, transcript):
+    """Generate a simple chat response using Gemini for smaller transcripts"""
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        prompt = f"""You are an AI assistant helping users understand their meeting content. 
+
+Meeting Transcript:
+{transcript}
+
+User Question: {question}
+
+Instructions:
+- Answer based only on the provided meeting transcript
+- Be specific and helpful
+- If the answer isn't in the transcript, say so clearly
+- Keep responses concise but informative
+- Use a friendly, professional tone
+
+Answer:"""
+        
+        response = model.generate_content(prompt)
+        return response.text
+        
+    except Exception as e:
+        print(f"[AI] Simple chat response error: {str(e)}")
+        return "I'm having trouble processing your question right now. Please try again."
 
 def generate_summary(transcript):
     """Generate meeting summary - only chunk if necessary"""
@@ -120,18 +155,19 @@ Format the response clearly with headers and bullet points."""
     return final_summary.text
 
 def chatbot_answer(meeting_id: str, question: str):
-    """Answer questions using vector similarity search"""
-    vector_store = load_vector_store(meeting_id)
-    
-    if not vector_store:
-        return "Vector store not found. Please process the meeting first."
-    
-    # Find relevant chunks
-    relevant_docs = vector_store.similarity_search(question, k=5)
-    context = "\n".join([doc.page_content for doc in relevant_docs])
-    
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    prompt = f"""You are an AI meeting assistant. Based on the following meeting context, answer the user's question accurately and concisely.
+    """Answer questions using vector similarity search for large transcripts"""
+    try:
+        vector_store = load_vector_store(meeting_id)
+        
+        if not vector_store:
+            return "Vector store not found. Please process the meeting first."
+        
+        # Find relevant chunks
+        relevant_docs = vector_store.similarity_search(question, k=5)
+        context = "\n".join([doc.page_content for doc in relevant_docs])
+        
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        prompt = f"""You are an AI meeting assistant. Based on the following meeting context, answer the user's question accurately and concisely.
 
 Context from meeting:
 {context}
@@ -145,8 +181,11 @@ Instructions:
 - Include timestamps or speaker information if available
 - Keep answers concise but informative"""
 
-    response = model.generate_content(prompt)
-    return response.text
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"[AI] Chatbot answer error: {e}")
+        return "I'm having trouble processing your question right now. Please try again."
 
 def identify_speakers(transcript_segments):
     """Identify different speakers in transcript segments"""
@@ -159,8 +198,8 @@ def identify_speakers(transcript_segments):
         # Simple speaker change detection based on pauses or audio characteristics
         # In real implementation, use libraries like pyannote.audio
         if segment.get('speaker_change', False) or len(speakers) == 0:
+            current_speaker = f"Speaker_{speaker_count}"
             speaker_count += 1
-            current_speaker = f"Speaker_{min(speaker_count, 4)}"  # Max 4 speakers
             
         speakers[segment['timestamp']] = current_speaker
         
@@ -176,9 +215,11 @@ def generate_knowledge_graph(transcript):
         all_relationships = []
         
         for chunk in chunks:
-            chunk_result = _extract_entities_from_chunk(chunk)
-            all_entities.extend(chunk_result.get('nodes', []))
-            all_relationships.extend(chunk_result.get('edges', []))
+            chunk_graph = _extract_entities_from_chunk(chunk)
+            if chunk_graph and 'nodes' in chunk_graph:
+                all_entities.extend(chunk_graph['nodes'])
+            if chunk_graph and 'edges' in chunk_graph:
+                all_relationships.extend(chunk_graph['edges'])
         
         # Deduplicate and combine
         unique_entities = _deduplicate_entities(all_entities)
@@ -256,7 +297,7 @@ Make sure to:
         
         # Validate and fix the structure
         if not isinstance(result, dict):
-            raise ValueError("Response is not a dictionary")
+            return _create_fallback_graph(text)
         
         # Ensure all required keys exist
         result.setdefault('nodes', [])
@@ -264,38 +305,10 @@ Make sure to:
         result.setdefault('topics', [])
         result.setdefault('action_items', [])
         
-        # Validate nodes
-        valid_nodes = []
-        for node in result.get('nodes', []):
-            if isinstance(node, dict) and 'id' in node and 'label' in node and 'type' in node:
-                # Ensure properties exist
-                node.setdefault('properties', {})
-                valid_nodes.append(node)
-        
-        # Validate edges
-        valid_edges = []
-        node_ids = {node['id'] for node in valid_nodes}
-        for edge in result.get('edges', []):
-            if (isinstance(edge, dict) and 
-                'source' in edge and 'target' in edge and 'relationship' in edge and
-                edge['source'] in node_ids and edge['target'] in node_ids):
-                edge.setdefault('weight', 1.0)
-                valid_edges.append(edge)
-        
-        result['nodes'] = valid_nodes
-        result['edges'] = valid_edges
-        
-        # If we have no nodes, create some basic ones from the text
-        if not valid_nodes:
-            result = _create_fallback_graph(text)
-        
         return result
         
     except Exception as e:
-        print(f"Error parsing knowledge graph: {e}")
-        print(f"Response text: {response.text if 'response' in locals() else 'No response'}")
-        
-        # Return fallback graph
+        print(f"[AI] Knowledge graph extraction error: {e}")
         return _create_fallback_graph(text)
 
 def _create_fallback_graph(text):
@@ -312,27 +325,19 @@ def _create_fallback_graph(text):
     # Create generic nodes
     if any(indicator in text.lower() for indicator in people_indicators):
         nodes.append({
-            "id": "meeting_participants",
-            "label": "Meeting Participants",
+            "id": "generic_participant",
+            "label": "Meeting Participant",
             "type": "person",
-            "properties": {"count": "multiple"}
+            "properties": {"role": "participant"}
         })
     
     if any(indicator in text.lower() for indicator in projects_indicators):
         nodes.append({
-            "id": "discussed_projects",
-            "label": "Discussed Projects",
+            "id": "generic_project",
+            "label": "Discussed Project",
             "type": "project",
-            "properties": {"status": "discussed"}
+            "properties": {"status": "mentioned"}
         })
-        
-        if nodes:
-            edges.append({
-                "source": "meeting_participants",
-                "target": "discussed_projects",
-                "relationship": "discussed",
-                "weight": 1.0
-            })
     
     # Extract topics from common words
     common_topics = ['meeting', 'discussion', 'project', 'team', 'work', 'plan']
@@ -343,30 +348,86 @@ def _create_fallback_graph(text):
     return {
         "nodes": nodes,
         "edges": edges,
-        "topics": topics[:5],  # Limit to 5 topics
+        "topics": topics[:5],
         "action_items": []
     }
+
+def _deduplicate_entities(entities):
+    """Remove duplicate entities based on label similarity"""
+    if not entities:
+        return []
+    
+    unique_entities = []
+    seen_labels = set()
+    
+    for entity in entities:
+        label_lower = entity.get('label', '').lower()
+        if label_lower not in seen_labels:
+            unique_entities.append(entity)
+            seen_labels.add(label_lower)
+    
+    return unique_entities
+
+def _deduplicate_relationships(relationships):
+    """Remove duplicate relationships"""
+    if not relationships:
+        return []
+    
+    unique_relationships = []
+    seen_relationships = set()
+    
+    for rel in relationships:
+        rel_key = (rel.get('source'), rel.get('target'), rel.get('relationship'))
+        if rel_key not in seen_relationships:
+            unique_relationships.append(rel)
+            seen_relationships.add(rel_key)
+    
+    return unique_relationships
+
+def _extract_topics_from_entities(entities):
+    """Extract topics from entity list"""
+    topics = []
+    for entity in entities:
+        if entity.get('type') == 'topic':
+            topics.append(entity.get('label', '').lower())
+    return list(set(topics))[:10]  # Return max 10 unique topics
+
+def _extract_action_items(transcript):
+    """Extract action items from transcript"""
+    # Simple action item extraction
+    action_keywords = ['action item', 'todo', 'follow up', 'assign', 'due', 'deadline']
+    lines = transcript.split('\n')
+    
+    action_items = []
+    for line in lines:
+        if any(keyword in line.lower() for keyword in action_keywords):
+            action_items.append({
+                "task": line.strip(),
+                "assignee": "TBD",
+                "due_date": "TBD",
+                "priority": "medium"
+            })
+    
+    return action_items[:5]  # Return max 5 action items
 
 def translate_transcript(transcript, target_language):
     """Translate transcript to target language"""
     if should_chunk_transcript(transcript):
-        # Translate in chunks for large transcripts
         chunks = chunk_transcript(transcript)
         translated_chunks = []
         
         for chunk in chunks:
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(
-                f"Translate this text to {target_language}, maintaining speaker identification and structure:\n\n{chunk}"
+                f"Translate this meeting transcript to {target_language}:\n\n{chunk}"
             )
             translated_chunks.append(response.text)
         
-        return "\n\n".join(translated_chunks)
+        return '\n\n'.join(translated_chunks)
     else:
-        # Translate as single document
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(
-            f"Translate this meeting transcript to {target_language}, maintaining the structure and speaker identification:\n\n{transcript}"
+            f"Translate this meeting transcript to {target_language}:\n\n{transcript}"
         )
         return response.text
 

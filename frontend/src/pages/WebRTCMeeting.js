@@ -927,39 +927,37 @@ const WebRTCMeeting = ({ roomId, onLeave, isHost = false, meetingData = null }) 
             </div>
 
             {/* Transcription */}
-            {transcriptionEnabled && (
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium">Live Transcript</h4>
-                  {isHost && (
-                    <button
-                      onClick={toggleTranscription}
-                      className={`px-2 py-1 rounded text-xs ${
-                        transcriptionEnabled
-                          ? 'bg-green-600 hover:bg-green-700'
-                          : 'bg-gray-600 hover:bg-gray-700'
-                      }`}
-                    >
-                      {transcriptionEnabled ? 'On' : 'Off'}
-                    </button>
-                  )}
-                </div>
-                <div className="bg-gray-700 rounded-lg p-3 h-32 overflow-y-auto text-sm">
-                  {transcript.length > 0 ? (
-                    transcript.slice(-5).map((entry) => (
-                      <div key={entry.id} className="mb-2">
-                        <span className="font-medium text-blue-400">{entry.speaker}:</span>{' '}
-                        <span className="text-gray-300">{entry.text}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-gray-400 text-center py-4">
-                      Transcript will appear here...
-                    </div>
-                  )}
-                </div>
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium">Live Transcript</h4>
+                {isHost && (
+                  <button
+                    onClick={toggleTranscription}
+                    className={`px-2 py-1 rounded text-xs ${
+                      transcriptionEnabled
+                        ? 'bg-green-600 hover:bg-green-700'
+                        : 'bg-gray-600 hover:bg-gray-700'
+                    }`}
+                  >
+                    {transcriptionEnabled ? 'On' : 'Off'}
+                  </button>
+                )}
               </div>
-            )}
+              <div className="bg-gray-700 rounded-lg p-3 h-32 overflow-y-auto text-sm">
+                {transcript.length > 0 ? (
+                  transcript.slice(-5).map((entry) => (
+                    <div key={entry.id} className="mb-2">
+                      <span className="font-medium text-blue-400">{entry.speaker}:</span>{' '}
+                      <span className="text-gray-300">{entry.text}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-400 text-center py-4">
+                    Transcript will appear here...
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

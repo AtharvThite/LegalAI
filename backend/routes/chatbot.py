@@ -1,10 +1,9 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from utils.ai import chatbot_answer, create_vector_store, load_vector_store
+from utils.ai import chatbot_answer, create_vector_store, load_vector_store, generate_simple_chat_response
 from datetime import datetime
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-import os
 import traceback
 
 chatbot_bp = Blueprint('chatbot', __name__)
@@ -30,22 +29,20 @@ def chat_with_meeting(meeting_id):
         db = get_mongo()
         data = request.get_json()
         
-        if not data or 'message' not in data:
-            return jsonify({'error': 'Message is required'}), 400
+        # Fix: Check for both 'message' and 'question' in the request
+        user_message = data.get('message') or data.get('question') if data else None
         
-        user_message = data['message']
+        if not user_message or not user_message.strip():
+            return jsonify({'error': 'Message is required'}), 400
         
         print(f"[CHATBOT] Received message for meeting {meeting_id}: {user_message}")
         
         # Handle both ObjectId and UUID formats
         if is_valid_objectid(meeting_id):
-            # MongoDB ObjectId format
             meeting = db.meetings.find_one({'_id': ObjectId(meeting_id)})
         else:
-            # UUID format (for WebRTC meetings)
             meeting = db.meetings.find_one({'id': meeting_id})
             if not meeting:
-                # Also try room_id for WebRTC meetings
                 meeting = db.meetings.find_one({'room_id': meeting_id.upper()})
         
         if not meeting:
@@ -55,11 +52,9 @@ def chat_with_meeting(meeting_id):
         # Check if user has access to this meeting
         user_has_access = False
         
-        # Check if user is host
         if meeting.get('host_id') == user_id or meeting.get('user_id') == user_id:
             user_has_access = True
         
-        # Check if user is participant
         participants = meeting.get('participants', [])
         for participant in participants:
             if participant.get('user_id') == user_id:
@@ -72,7 +67,7 @@ def chat_with_meeting(meeting_id):
         
         # Get meeting transcript
         transcript_text = ""
-        meeting_uuid = meeting.get('id', meeting_id)  # Use UUID if available, fallback to meeting_id
+        meeting_uuid = meeting.get('id', meeting_id)
         
         print(f"[CHATBOT] Looking for transcript with meeting_id: {meeting_uuid}")
         
@@ -88,9 +83,15 @@ def chat_with_meeting(meeting_id):
             ])
             print(f"[CHATBOT] Found {len(transcript_segments)} transcript segments")
         else:
-            # Fallback to meeting transcript field
-            transcript_text = meeting.get('transcript', '')
-            print(f"[CHATBOT] Using meeting transcript field, length: {len(transcript_text)}")
+            # Fallback to transcriptions collection
+            transcription_doc = db.transcriptions.find_one({'meeting_id': meeting_uuid})
+            if transcription_doc:
+                transcript_text = transcription_doc.get('transcript', '')
+                print(f"[CHATBOT] Using transcription document, length: {len(transcript_text)}")
+            else:
+                # Final fallback to meeting transcript field
+                transcript_text = meeting.get('transcript', '')
+                print(f"[CHATBOT] Using meeting transcript field, length: {len(transcript_text)}")
         
         if not transcript_text.strip():
             print("[CHATBOT] No transcript found for meeting")
@@ -103,41 +104,37 @@ def chat_with_meeting(meeting_id):
                 ]
             })
         
-        # Get or create vector store for this meeting
-        try:
-            print("[CHATBOT] Loading/creating vector store...")
-            vector_store = load_vector_store(meeting_uuid)
-            
-            if vector_store is None:
-                print("[CHATBOT] Creating new vector store...")
-                vector_store = create_vector_store(transcript_text, meeting_uuid)
-                
-                if vector_store is None:
-                    raise Exception("Failed to create vector store")
-            
-            print("[CHATBOT] Vector store ready")
-        except Exception as e:
-            print(f"[CHATBOT] Vector store error: {str(e)}")
-            # Fallback to simple text-based response
-            try:
-                from utils.ai import generate_simple_response
-                response = generate_simple_response(user_message, transcript_text)
-                return jsonify({
-                    'response': response,
-                    'suggestions': [
-                        "What were the main topics discussed?",
-                        "Can you summarize this meeting?",
-                        "What were the key decisions made?"
-                    ]
-                })
-            except Exception as fallback_error:
-                print(f"[CHATBOT] Fallback error: {str(fallback_error)}")
-                return jsonify({'error': 'AI service temporarily unavailable'}), 503
-        
-        # Generate response using AI
+        # Generate response using AI - use vector store for large transcripts, simple response for small ones
         try:
             print("[CHATBOT] Generating AI response...")
-            ai_response = chatbot_answer(user_message, vector_store)
+            
+            # Check if we should use vector store (for large transcripts) or simple response
+            MAX_SIMPLE_RESPONSE_LENGTH = 30000  # Same as MAX_CONTEXT_SIZE in ai.py
+            
+            if len(transcript_text) > MAX_SIMPLE_RESPONSE_LENGTH:
+                print(f"[CHATBOT] Large transcript ({len(transcript_text)} chars), using vector store")
+                
+                # Try to load existing vector store
+                vector_store = load_vector_store(meeting_uuid)
+                
+                if not vector_store:
+                    print("[CHATBOT] No vector store found, creating one...")
+                    try:
+                        vector_store = create_vector_store(meeting_uuid, transcript_text)
+                        print("[CHATBOT] Vector store created successfully")
+                    except Exception as vs_error:
+                        print(f"[CHATBOT] Failed to create vector store: {vs_error}")
+                        # Fall back to simple response
+                        ai_response = generate_simple_chat_response(user_message, transcript_text[:MAX_SIMPLE_RESPONSE_LENGTH] + "...")
+                
+                if vector_store:
+                    # Use vector store for accurate responses
+                    ai_response = chatbot_answer(meeting_uuid, user_message)
+                    print(f"[CHATBOT] Used vector store for response")
+            else:
+                print(f"[CHATBOT] Small transcript ({len(transcript_text)} chars), using simple response")
+                # Use simple response for smaller transcripts
+                ai_response = generate_simple_chat_response(user_message, transcript_text)
             
             if not ai_response:
                 ai_response = "I couldn't generate a response. Please try rephrasing your question."
@@ -158,9 +155,7 @@ def chat_with_meeting(meeting_id):
                 print("[CHATBOT] Saved chat history")
             except Exception as save_error:
                 print(f"[CHATBOT] Failed to save chat history: {str(save_error)}")
-                # Don't fail the request if chat history saving fails
             
-            # Generate suggestions based on the meeting content
             suggestions = [
                 "What were the key decisions made?",
                 "Can you summarize the action items?",
@@ -175,12 +170,12 @@ def chat_with_meeting(meeting_id):
             
         except Exception as ai_error:
             print(f"[CHATBOT] AI response error: {str(ai_error)}")
-            print(f"[CHATBOT] AI error traceback: {traceback.format_exc()}")
+            traceback.print_exc()
             return jsonify({'error': 'Failed to generate AI response'}), 500
         
     except Exception as e:
         print(f"[CHATBOT] Unexpected error: {str(e)}")
-        print(f"[CHATBOT] Traceback: {traceback.format_exc()}")
+        traceback.print_exc()
         return jsonify({'error': 'Internal server error'}), 500
 
 @chatbot_bp.route('/<meeting_id>/history', methods=['GET'])
