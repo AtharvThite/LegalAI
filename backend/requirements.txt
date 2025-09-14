@@ -12,4 +12,4 @@ faiss-cpu
 numpy
 werkzeug
 reportlab
-pymongo
+pymongo[srv]==3.12
