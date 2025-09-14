@@ -6,9 +6,9 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import os
+import uuid
 from dotenv import load_dotenv
 from bson.objectid import ObjectId
-import uuid
 
 load_dotenv()
 
@@ -22,7 +22,8 @@ if IS_PRODUCTION:
     allowed_origins = [
         'https://huddle-gathersmarter.netlify.app',
         'https://huddle-gathersmarter.netlify.app/',
-        'https://huddle-bugz.onrender.com'
+        'https://huddle-bugz.onrender.com',
+        'https://huddle-bugz.onrender.com/'
     ]
 else:
     allowed_origins = ['http://localhost:3000']
