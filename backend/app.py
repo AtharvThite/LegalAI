@@ -300,6 +300,8 @@ def register():
         })
     except Exception as e:
         print(f"Registration error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': 'Registration failed'}), 500
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -322,6 +324,8 @@ def login():
         })
     except Exception as e:
         print(f"Login error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': 'Login failed'}), 500
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -341,6 +345,8 @@ def get_current_user():
         })
     except Exception as e:
         print(f"Get current user error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': 'Failed to get user'}), 500
 
 # Import and register blueprints
