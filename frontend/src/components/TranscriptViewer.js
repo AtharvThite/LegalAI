@@ -30,22 +30,53 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
   // Parse transcript into segments (assuming it's formatted with timestamps and speakers)
   const parseTranscript = (rawTranscript) => {
     if (!rawTranscript) return [];
+
+    // Regex for full format: "HH:MM:SS - Speaker X: ActualName (timestamp): text"
+    const fullRegex = /(\d{2}:\d{2}:\d{2}) - Speaker \d+: (.+?) \((.+?)\): (.+)/;
     
-    // This is a simple parser - in production, you'd have a more sophisticated format
+    // Regex for simplified format: "SpeakerName (timestamp): text"
+    const simpleRegex = /(.+?) \((.+?)\): (.+)/;
+    
     const lines = rawTranscript.split('\n').filter(line => line.trim());
-    return lines.map((line, index) => {
-      // Try to extract timestamp and speaker from line
-      const timestampMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
-      const speakerMatch = line.match(/^([A-Za-z\s]+):/);
+    const segments = [];
+    
+    lines.forEach((line, index) => {
+      let match = line.match(fullRegex);
+      let speaker, timestamp, text;
       
-      return {
+      if (match) {
+        // Full format: Use the actual speaker name and full timestamp
+        const [, initialTimestamp, actualSpeaker, fullTimestamp, segmentText] = match;
+        speaker = actualSpeaker.trim();
+        timestamp = fullTimestamp;  // Includes date when present
+        text = segmentText.trim();
+      } else {
+        // Try simplified format
+        match = line.match(simpleRegex);
+        if (match) {
+          const [, actualSpeaker, fullTimestamp, segmentText] = match;
+          speaker = actualSpeaker.trim();
+          timestamp = fullTimestamp;  // May or may not include date
+          text = segmentText.trim();
+        } else {
+          // Fallback for unparseable lines
+          console.warn(`Skipping unparseable transcript line: ${line}`);
+          speaker = 'Unknown Speaker';
+          timestamp = 'Unknown';
+          text = line.trim();
+        }
+      }
+      
+      segments.push({
         id: index,
-        timestamp: timestampMatch ? timestampMatch[1] : `00:${Math.floor(index / 10).toString().padStart(2, '0')}:${(index % 10 * 6).toString().padStart(2, '0')}`,
-        speaker: speakerMatch ? speakerMatch[1].trim() : `Speaker ${(index % 3) + 1}`,
-        text: line.replace(/^\d{2}:\d{2}:\d{2}\s*/, '').replace(/^[A-Za-z\s]+:\s*/, '').trim() || line,
-        confidence: 0.85 + Math.random() * 0.15 // Mock confidence score
-      };
+        timestamp: timestamp,
+        speaker: speaker,
+        text: text,
+        confidence: 0.9  // Default; adjust if real data is available
+      });
     });
+    
+    return segments;
   };
 
   const transcriptSegments = parseTranscript(transcript);
@@ -235,6 +266,36 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
     return colors[index];
   };
 
+  // Helper function to format timestamps for better readability
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp || timestamp === 'Unknown') return timestamp;
+    
+    // Check if it's a simple time format (HH:MM:SS)
+    const timeMatch = timestamp.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+    if (timeMatch) {
+      const [, h, m, s] = timeMatch;
+      const hour = parseInt(h, 10);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const hour12 = hour % 12 || 12;  // Convert to 12-hour format
+      return `${hour12}:${m} ${ampm}`;  // e.g., "12:30 PM"
+    }
+    
+    // Check if it's a full datetime string
+    const date = new Date(timestamp);
+    if (!isNaN(date.getTime())) {
+      // Format to readable time (12-hour with AM/PM)
+      return date.toLocaleTimeString([], { 
+        hour: 'numeric', 
+        minute: '2-digit', 
+        second: '2-digit', 
+        hour12: true 
+      });  // e.g., "6:52:54 AM"
+    }
+    
+    // Fallback to original if unparseable
+    return timestamp;
+  };
+
   if (!transcript) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
@@ -344,7 +405,7 @@ const TranscriptViewer = ({ transcript, meetingId }) => {
                 <div className="flex-shrink-0 w-20">
                   <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
                     <Clock className="w-3 h-3" />
-                    <span>{segment.timestamp}</span>
+                    <span>{formatTimestamp(segment.timestamp)}</span>
                   </div>
                 </div>
 
