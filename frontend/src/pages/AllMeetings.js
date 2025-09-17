@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; 
 import { 
   Search, 
   Filter, 
@@ -392,23 +392,47 @@ const AllMeetings = ({ onMeetingClick }) => {
     }
   };
 
-  // Sort meetings by folder color when sortBy is 'folder_color'
-  const sortMeetingsByFolderColor = (meetingsToSort) => {
-    if (sortBy !== 'folder_color') return meetingsToSort;
-    
-    return [...meetingsToSort].sort((a, b) => {
-      const folderA = folders.find(f => f.id === a.folder_id);
-      const folderB = folders.find(f => f.id === b.folder_id);
-      const colorA = folderA?.color || '#000000';
-      const colorB = folderB?.color || '#000000';
-      
+  // Add this useMemo to handle client-side sorting for all options
+  const sortedMeetings = useMemo(() => {
+    if (!meetings.length) return meetings;
+
+    const sorted = [...meetings].sort((a, b) => {
+      let aValue, bValue;
+
+      switch (sortBy) {
+        case 'created_at':
+          aValue = parseDateTime(a.created_at)?.getTime() || 0;
+          bValue = parseDateTime(b.created_at)?.getTime() || 0;
+          break;
+        case 'title':
+          aValue = (a.title || '').toLowerCase();
+          bValue = (b.title || '').toLowerCase();
+          break;
+        case 'status':
+          // Custom order: completed > processing > recording > others
+          const statusOrder = { completed: 1, processing: 2, recording: 3 };
+          aValue = statusOrder[a.status] || 4;
+          bValue = statusOrder[b.status] || 4;
+          break;
+        case 'folder_color':
+          const folderA = folders.find(f => f.id === a.folder_id);
+          const folderB = folders.find(f => f.id === b.folder_id);
+          aValue = folderA?.color || '#000000';
+          bValue = folderB?.color || '#000000';
+          break;
+        default:
+          return 0;  // No sorting if unknown
+      }
+
       if (sortOrder === 'asc') {
-        return colorA.localeCompare(colorB);
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       } else {
-        return colorB.localeCompare(colorA);
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
       }
     });
-  };
+
+    return sorted;
+  }, [meetings, sortBy, sortOrder, folders]);  // Dependencies: re-sort when these change
 
   const renderMeetingCard = (meeting) => {
     const folder = folders.find(f => f.id === meeting.folder_id);
@@ -717,9 +741,6 @@ const AllMeetings = ({ onMeetingClick }) => {
       </div>
     );
   }
-
-  // Apply folder color sorting if needed
-  const sortedMeetings = sortMeetingsByFolderColor(meetings);
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">

@@ -16,7 +16,9 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
 
   // Use environment variable or fallback to production URL
-  const API_BASE = process.env.REACT_APP_API_URL || 'https://huddle-bugz.onrender.com/api';
+  const API_BASE = process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:5000/api' 
+    : (process.env.REACT_APP_API_URL || 'https://huddle-bugz.onrender.com/api');
 
   useEffect(() => {
     if (token) {
