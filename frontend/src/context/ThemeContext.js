@@ -9,13 +9,32 @@ export const useTheme = () => {
 };
 
 export const ThemeProvider = ({ children }) => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Load initial theme from localStorage with robust parsing
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (!savedTheme) return false; // Default to light mode
+    
+    // Handle boolean strings
+    if (savedTheme === 'true') return true;
+    if (savedTheme === 'false') return false;
+    
+    // Handle legacy string values (e.g., "dark" or "light")
+    if (savedTheme === 'dark') return true;
+    if (savedTheme === 'light') return false;
+    
+    // Fallback for any invalid data
+    console.warn('Invalid theme value in localStorage, defaulting to light mode');
+    return false;
+  });
 
   useEffect(() => {
+    // Apply theme to body on load or change
     document.body.className = isDarkMode ? 'dark' : '';
+    // Save to localStorage as JSON (always "true" or "false")
+    localStorage.setItem('theme', JSON.stringify(isDarkMode));
   }, [isDarkMode]);
 
-  const toggleTheme = () => setIsDarkMode((d) => !d);
+  const toggleTheme = () => setIsDarkMode((prev) => !prev);
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>

@@ -15,9 +15,16 @@ import LoadingSpinner from './components/LoadingSpinner';
 import LandingPage from './pages/LandingPage';
 
 const AppContent = () => {
-  const [activeView, setActiveView] = useState('dashboard');
-  const [selectedMeetingId, setSelectedMeetingId] = useState(null);
-  const [activeTab, setActiveTab] = useState('transcript');
+  // Load initial states from localStorage
+  const [activeView, setActiveView] = useState(() => {
+    return localStorage.getItem('activeView') || 'dashboard';
+  });
+  const [selectedMeetingId, setSelectedMeetingId] = useState(() => {
+    return localStorage.getItem('selectedMeetingId') || null;
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('activeTab') || 'transcript';
+  });
   const [roomId, setRoomId] = useState(null);
   const [meetingData, setMeetingData] = useState(null);
   const [isHost, setIsHost] = useState(false);
@@ -29,6 +36,22 @@ const AppContent = () => {
       setShowLanding(true);
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    localStorage.setItem('activeView', activeView);
+  }, [activeView]);
+
+  useEffect(() => {
+    if (selectedMeetingId) {
+      localStorage.setItem('selectedMeetingId', selectedMeetingId);
+    } else {
+      localStorage.removeItem('selectedMeetingId');
+    }
+  }, [selectedMeetingId]);
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
 
   if (loading) {
     return <LoadingSpinner />;
