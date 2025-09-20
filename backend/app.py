@@ -50,7 +50,7 @@ socketio = SocketIO(app,
                    async_mode='threading')
 
 # MongoDB connection debugging
-mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/huddle")
+mongo_uri = os.getenv("MONGODB_URI") if IS_PRODUCTION else "mongodb://localhost:27017/huddle"
 print(f"[DEBUG] Raw MONGODB_URI from env: {os.getenv('MONGODB_URI')}")
 print(f"[DEBUG] Final MongoDB URI: {mongo_uri}")
 print(f"[DEBUG] MongoDB URI type: {type(mongo_uri)}")
@@ -355,7 +355,7 @@ def register():
             return jsonify({'error': 'Missing required fields'}), 400
         
         print(f"[DEBUG] Attempting to check existing user...")
-        if not mongo or not mongo.db:
+        if mongo is None or mongo.db is None:
             print(f"[DEBUG] ❌ No MongoDB connection available")
             return jsonify({'error': 'Database connection unavailable'}), 500
             
@@ -413,7 +413,7 @@ def login():
             return jsonify({'error': 'Missing required fields'}), 400
         
         print(f"[DEBUG] Attempting to find user...")
-        if not mongo or not mongo.db:
+        if mongo is None or mongo.db is None:
             print(f"[DEBUG] ❌ No MongoDB connection available")
             return jsonify({'error': 'Database connection unavailable'}), 500
             
