@@ -24,10 +24,10 @@ print(f"[DEBUG] RENDER env var: {os.getenv('RENDER')}")
 # Configure CORS for production and development
 if IS_PRODUCTION:
     allowed_origins = [
-        'https://legalai.netlify.app',
-        'https://legalai.netlify.app/',
-        'https://legalai.onrender.com',
-        'https://legalai.onrender.com/'
+        'https://legalai-doc-intelligence.netlify.app',
+        'https://legalai-doc-intelligence.netlify.app/ ',
+        'https://legalai-k4uh.onrender.com',
+        'https://legalai-k4uh.onrender.com/'
     ]
 else:
     allowed_origins = ['http://localhost:3000']
