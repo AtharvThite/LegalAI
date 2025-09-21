@@ -19,30 +19,30 @@ def is_valid_objectid(id_string):
     except (InvalidId, TypeError):
         return False
 
-@summary_bp.route('/<meeting_id>', methods=['POST'])
+@summary_bp.route('/<document_id>', methods=['POST'])
 @jwt_required()
-def generate_meeting_summary(meeting_id):
+def generate_document_summary(document_id):
     user_id = get_jwt_identity()
     db = get_mongo()
     
-    print(f"[DEBUG] Generating summary for meeting_id: {meeting_id}")
+    print(f"[DEBUG] Generating summary for document_id: {document_id}")
     
-    # Build query based on whether meeting_id is ObjectId or custom ID
-    if is_valid_objectid(meeting_id):
+    # Build query based on whether document_id is ObjectId or custom ID
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    # Verify meeting ownership
-    meeting = db.meetings.find_one(query)
-    if not meeting:
-        print(f"[DEBUG] Meeting not found with query: {query}")
-        return jsonify({'error': 'Meeting not found'}), 404
+    # Verify document ownership
+    document = db.documents.find_one(query)
+    if not document:
+        print(f"[DEBUG] Document not found with query: {query}")
+        return jsonify({'error': 'Document not found'}), 404
     
-    print(f"[DEBUG] Found meeting: {meeting.get('id', str(meeting['_id']))}")
+    print(f"[DEBUG] Found document: {document.get('id', str(document['_id']))}")
     
     # Get transcript from request or database
     transcript = request.json.get('transcript') if request.json else None
@@ -52,69 +52,66 @@ def generate_meeting_summary(meeting_id):
         search_ids = []
         
         # Add all possible ID variations to search
-        if meeting.get('id'):
-            search_ids.append(meeting['id'])
+        if document.get('id'):
+            search_ids.append(document['id'])
         
-        search_ids.append(str(meeting['_id']))
-        search_ids.append(meeting_id)
+        search_ids.append(str(document['_id']))
+        search_ids.append(document_id)
         
         print(f"[DEBUG] Searching for transcript with IDs: {search_ids}")
         
         # Try each possible ID
         doc = None
         for search_id in search_ids:
-            doc = db.transcriptions.find_one({'meeting_id': search_id})
-            print(f"[DEBUG] Searching transcriptions with meeting_id='{search_id}': {'Found' if doc else 'Not found'}")
+            doc = db.transcriptions.find_one({'document_id': search_id})
+            print(f"[DEBUG] Searching transcriptions with document_id='{search_id}': {'Found' if doc else 'Not found'}")
             if doc:
                 break
         
         # If still not found, let's see what transcriptions exist for this user
         if not doc:
             print(f"[DEBUG] No transcript found. Checking all transcriptions...")
-            all_transcriptions = list(db.transcriptions.find({}, {'meeting_id': 1, '_id': 1}))
-            print(f"[DEBUG] All transcriptions: {[(t['meeting_id'], str(t['_id'])) for t in all_transcriptions]}")
+            all_transcriptions = list(db.transcriptions.find({}, {'document_id': 1, '_id': 1}))
+            print(f"[DEBUG] All transcriptions: {[(t['document_id'], str(t['_id'])) for t in all_transcriptions]}")
             
-            # Also check all meetings for this user
-            user_meetings = list(db.meetings.find({'user_id': user_id}, {'id': 1, '_id': 1, 'title': 1}))
-            print(f"[DEBUG] User meetings: {[(m.get('id', str(m['_id'])), m.get('title', 'Untitled')) for m in user_meetings]}")
+            # Also check all documents for this user
+            user_documents = list(db.documents.find({'user_id': user_id}, {'id': 1, '_id': 1, 'title': 1}))
+            print(f"[DEBUG] User documents: {[(m.get('id', str(m['_id'])), m.get('title', 'Untitled')) for m in user_documents]}")
             
             # Try to create a simple transcript for testing
             if not transcript:
                 # Create a placeholder transcript for testing
                 sample_transcript = """
-Meeting Discussion:
+Document Discussion:
 
-Speaker 1 (00:00:30): Welcome everyone to today's project review meeting. Let's start by discussing the current status of our development milestones.
+Section 1: Introduction
 
-Speaker 2 (00:01:15): Thank you for organizing this. I wanted to update everyone on the frontend progress. We've completed the user authentication system and are now working on the dashboard components.
+This document summarizes the key points discussed in the document. The document focused on the project updates, challenges faced, and the next steps.
 
-Speaker 1 (00:02:00): That's great progress. How are we doing with the timeline? Are we still on track for the beta release next month?
+Section 2: Project Updates
 
-Speaker 2 (00:02:30): Yes, we should be able to meet the deadline. However, we might need additional resources for the testing phase.
+- The frontend development is 70% complete. The team is currently working on integrating the backend services.
+- The backend development has encountered some challenges with the API rate limits. The team is working on optimizing the API calls.
+- The database migration to the new server is complete. The performance has improved by 50%.
 
-Speaker 3 (00:03:00): I can help with the testing. I've been working on the backend API endpoints and most of them are ready for integration testing.
+Section 3: Challenges
 
-Speaker 1 (00:03:45): Excellent. Let's make sure we have proper documentation for the API endpoints. What about the database optimization work?
+- The main challenge faced by the frontend team is the delay in receiving the updated API specifications.
+- The backend team is facing issues with the third-party API rate limits.
 
-Speaker 3 (00:04:15): The database performance improvements are complete. We've reduced query times by about 40% and improved the overall system responsiveness.
+Section 4: Next Steps
 
-Speaker 2 (00:05:00): That's impressive. I noticed the difference when testing the new features. The user experience is much smoother now.
-
-Speaker 1 (00:05:30): Perfect. Let's discuss the action items for next week. Speaker 2, can you finalize the dashboard design and share it with the team by Wednesday?
-
-Speaker 2 (00:06:00): Absolutely. I'll have the mockups ready and will schedule a design review session.
-
-Speaker 3 (00:06:30): I'll continue with the API documentation and prepare the testing environment for the integration phase.
-
-Speaker 1 (00:07:00): Great. Let's reconvene next Friday to review our progress. Thank you everyone for the productive discussion.
+- The frontend team will continue to work on the dashboard and report any blockers.
+- The backend team will optimize the API calls and update the documentation.
+- A follow-up review is scheduled for next week to assess the progress.
                 """.strip()
                 
                 # Store this sample transcript
-                storage_id = meeting.get('id', meeting_id)
+                storage_id = document.get('id', document_id)
                 db.transcriptions.update_one(
-                    {'meeting_id': storage_id},
+                    {'document_id': storage_id},
                     {'$set': {
-                        'meeting_id': storage_id,
+                        'document_id': storage_id,
                         'transcript': sample_transcript,
                         'created_at': datetime.utcnow(),
                         'language': 'en-US'
@@ -137,14 +134,14 @@ Speaker 1 (00:07:00): Great. Let's reconvene next Friday to review our progress.
         print(f"[DEBUG] Generating summary...")
         summary = generate_summary(transcript)
         
-        # Use the custom ID for storage if available, otherwise use meeting_id
-        storage_id = meeting.get('id', meeting_id)
-        print(f"[DEBUG] Storing summary with meeting_id: {storage_id}")
+        # Use the custom ID for storage if available, otherwise use document_id
+        storage_id = document.get('id', document_id)
+        print(f"[DEBUG] Storing summary with document_id: {storage_id}")
         
         db.summaries.update_one(
-            {'meeting_id': storage_id},
+            {'document_id': storage_id},
             {'$set': {
-                'meeting_id': storage_id,
+                'document_id': storage_id,
                 'summary': summary,
                 'created_at': datetime.utcnow()
             }},
@@ -158,39 +155,39 @@ Speaker 1 (00:07:00): Great. Let's reconvene next Friday to review our progress.
         traceback.print_exc()
         return jsonify({'error': f'Failed to generate summary: {str(e)}'}), 500
 
-@summary_bp.route('/<meeting_id>', methods=['GET'])
+@summary_bp.route('/<document_id>', methods=['GET'])
 @jwt_required()
-def get_meeting_summary(meeting_id):
+def get_document_summary(document_id):
     user_id = get_jwt_identity()
     db = get_mongo()
     
-    # Build query based on whether meeting_id is ObjectId or custom ID
-    if is_valid_objectid(meeting_id):
+    # Build query based on whether document_id is ObjectId or custom ID
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    # Verify meeting ownership
-    meeting = db.meetings.find_one(query)
-    if not meeting:
-        return jsonify({'error': 'Meeting not found'}), 404
+    # Verify document ownership
+    document = db.documents.find_one(query)
+    if not document:
+        return jsonify({'error': 'Document not found'}), 404
     
     # Try multiple ways to find the summary
-    search_id = meeting.get('id', str(meeting['_id']))
+    search_id = document.get('id', str(document['_id']))
     
     # First try with the custom ID
-    doc = db.summaries.find_one({'meeting_id': search_id})
+    doc = db.summaries.find_one({'document_id': search_id})
     
     # If not found and we have an ObjectId, try with string version of ObjectId
-    if not doc and is_valid_objectid(meeting_id):
-        doc = db.summaries.find_one({'meeting_id': str(meeting['_id'])})
+    if not doc and is_valid_objectid(document_id):
+        doc = db.summaries.find_one({'document_id': str(document['_id'])})
     
-    # If still not found, try with the original meeting_id parameter
+    # If still not found, try with the original document_id parameter
     if not doc:
-        doc = db.summaries.find_one({'meeting_id': meeting_id})
+        doc = db.summaries.find_one({'document_id': document_id})
     
     if doc:
         doc['_id'] = str(doc['_id'])

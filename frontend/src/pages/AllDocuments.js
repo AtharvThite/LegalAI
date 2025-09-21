@@ -28,9 +28,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const AllMeetings = ({ onMeetingClick }) => {
+const DocumentsPage = ({ onDocumentClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [meetings, setMeetings] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [folders, setFolders] = useState([]);
   const [selectedFolder, setSelectedFolder] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,7 @@ const AllMeetings = ({ onMeetingClick }) => {
   const [sortOrder, setSortOrder] = useState('desc');
   
   // Bulk operations
-  const [selectedMeetings, setSelectedMeetings] = useState([]);
+  const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   
@@ -52,8 +52,8 @@ const AllMeetings = ({ onMeetingClick }) => {
   const [showMoveDialog, setShowMoveDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   
-  // Individual meeting actions
-  const [showMeetingMenu, setShowMeetingMenu] = useState(null);
+  // Individual document actions
+  const [showDocumentMenu, setShowDocumentMenu] = useState(null);
   const [showIndividualMoveDialog, setShowIndividualMoveDialog] = useState(null);
   const [showIndividualDeleteConfirm, setShowIndividualDeleteConfirm] = useState(null);
   
@@ -65,7 +65,7 @@ const AllMeetings = ({ onMeetingClick }) => {
   ];
 
   // Fetch functions
-  const fetchMeetings = async (searchQuery = '', folderFilter = 'all', pageNum = 1) => {
+  const fetchDocuments = async (searchQuery = '', folderFilter = 'all', pageNum = 1) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -80,14 +80,14 @@ const AllMeetings = ({ onMeetingClick }) => {
         params.append('folder_id', folderFilter);
       }
 
-      const response = await makeAuthenticatedRequest(`/meetings?${params}`);
+      const response = await makeAuthenticatedRequest(`/documents?${params}`);
       if (response.ok) {
         const data = await response.json();
-        setMeetings(data.meetings || []);
+        setDocuments(data.documents || []);
         setTotalPages(data.pages || 1);
       }
     } catch (error) {
-      console.error('Failed to fetch meetings:', error);
+      console.error('Failed to fetch documents:', error);
     } finally {
       setLoading(false);
     }
@@ -95,10 +95,10 @@ const AllMeetings = ({ onMeetingClick }) => {
 
   const fetchFolders = async () => {
     try {
-      const response = await makeAuthenticatedRequest('/meetings/folders');
+      const response = await makeAuthenticatedRequest('/documents/folders');
       if (response.ok) {
         const data = await response.json();
-        setFolders(data);
+        setFolders(data.folders || []);
       }
     } catch (error) {
       console.error('Failed to fetch folders:', error);
@@ -109,7 +109,7 @@ const AllMeetings = ({ onMeetingClick }) => {
     if (!newFolderName.trim()) return;
 
     try {
-      const response = await makeAuthenticatedRequest('/meetings/folders', {
+      const response = await makeAuthenticatedRequest('/documents/folders', {
         method: 'POST',
         body: JSON.stringify({ 
           name: newFolderName, 
@@ -128,77 +128,74 @@ const AllMeetings = ({ onMeetingClick }) => {
     }
   };
 
-  const deleteMeeting = async (meetingId) => {
+  const deleteDocument = async (documentId) => {
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/${documentId}`, {
         method: 'DELETE'
       });
-
       if (response.ok) {
-        fetchMeetings(searchTerm, selectedFolder, page);
+        fetchDocuments(searchTerm, selectedFolder, page);
       }
     } catch (error) {
-      console.error('Failed to delete meeting:', error);
+      console.error('Failed to delete document:', error);
     }
   };
 
-  const moveMeetings = async (targetFolderId) => {
+  const moveDocuments = async (targetFolderId) => {
     try {
-      const promises = selectedMeetings.map(meetingId =>
-        makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const promises = selectedDocuments.map(documentId =>
+        makeAuthenticatedRequest(`/documents/${documentId}`, {
           method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ folder_id: targetFolderId })
         })
       );
-
       await Promise.all(promises);
-      setSelectedMeetings([]);
-      setShowMoveDialog(false);
-      fetchMeetings(searchTerm, selectedFolder, page);
+      setSelectedDocuments([]);
+      fetchDocuments(searchTerm, selectedFolder, page);
     } catch (error) {
-      console.error('Failed to move meetings:', error);
+      console.error('Failed to move documents:', error);
     }
   };
 
-  const moveIndividualMeeting = async (meetingId, targetFolderId) => {
+  const moveIndividualDocument = async (documentId, targetFolderId) => {
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/${documentId}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_id: targetFolderId })
       });
-
       if (response.ok) {
-        setShowIndividualMoveDialog(null);
-        fetchMeetings(searchTerm, selectedFolder, page);
+        fetchDocuments(searchTerm, selectedFolder, page);
       }
     } catch (error) {
-      console.error('Failed to move meeting:', error);
+      console.error('Failed to move document:', error);
     }
   };
 
-  const bulkDeleteMeetings = async () => {
+  const bulkDeleteDocuments = async () => {
     try {
-      const promises = selectedMeetings.map(meetingId =>
-        makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const promises = selectedDocuments.map(documentId =>
+        makeAuthenticatedRequest(`/documents/${documentId}`, {
           method: 'DELETE'
         })
       );
 
       await Promise.all(promises);
-      setSelectedMeetings([]);
+      setSelectedDocuments([]);
       setShowDeleteConfirm(null);
-      fetchMeetings(searchTerm, selectedFolder, page);
+      fetchDocuments(searchTerm, selectedFolder, page);
     } catch (error) {
-      console.error('Failed to delete meetings:', error);
+      console.error('Failed to delete documents:', error);
     }
   };
 
-  const exportMeetings = async (format = 'json') => {
+  const exportDocuments = async (format = 'json') => {
     try {
       const response = await makeAuthenticatedRequest('/report/bulk-export', {
         method: 'POST',
         body: JSON.stringify({
-          meeting_ids: selectedMeetings,
+          document_ids: selectedDocuments,
           format: format
         })
       });
@@ -208,27 +205,27 @@ const AllMeetings = ({ onMeetingClick }) => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `meetings_export.${format === 'json' ? 'zip' : format}`;
+        a.download = `documents_export.${format === 'json' ? 'zip' : format}`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       }
     } catch (error) {
-      console.error('Failed to export meetings:', error);
+      console.error('Failed to export documents:', error);
     }
   };
 
-  const downloadIndividualReport = async (meetingId, format) => {
+  const downloadIndividualReport = async (documentId, format) => {
     try {
-      const response = await makeAuthenticatedRequest(`/report/${meetingId}/${format}`);
+      const response = await makeAuthenticatedRequest(`/report/${documentId}/${format}`);
       
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `meeting_${meetingId}.${format}`;
+        a.download = `document_${documentId}.${format}`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -239,35 +236,35 @@ const AllMeetings = ({ onMeetingClick }) => {
     }
   };
 
-  const shareIndividualMeeting = async (meetingId) => {
+  const shareIndividualDocument = async (documentId) => {
     try {
-      const url = `${window.location.origin}/meetings/${meetingId}`;
+      const url = `${window.location.origin}/documents/${documentId}`;
       await navigator.clipboard.writeText(url);
       // You could add a toast notification here
-      console.log('Meeting link copied to clipboard');
+      console.log('Document link copied to clipboard');
     } catch (error) {
-      console.error('Failed to share meeting:', error);
+      console.error('Failed to share document:', error);
     }
   };
 
-  const toggleMeetingSelection = (meetingId) => {
-    setSelectedMeetings(prev => {
-      const newSelection = prev.includes(meetingId)
-        ? prev.filter(id => id !== meetingId)
-        : [...prev, meetingId];
+  const toggleDocumentSelection = (documentId) => {
+    setSelectedDocuments(prev => {
+      const newSelection = prev.includes(documentId)
+        ? prev.filter(id => id !== documentId)
+        : [...prev, documentId];
       
-      setSelectAll(newSelection.length === meetings.length);
+      setSelectAll(newSelection.length === documents.length);
       return newSelection;
     });
   };
 
   const toggleSelectAll = () => {
     if (selectAll) {
-      setSelectedMeetings([]);
+      setSelectedDocuments([]);
       setSelectAll(false);
     } else {
-      const allMeetingIds = meetings.map(meeting => meeting.id || meeting._id);
-      setSelectedMeetings(allMeetingIds);
+      const allDocumentIds = documents.map(document => document.id || document._id);
+      setSelectedDocuments(allDocumentIds);
       setSelectAll(true);
     }
   };
@@ -323,44 +320,6 @@ const AllMeetings = ({ onMeetingClick }) => {
     }
   };
 
-  // Update formatDuration function
-  const formatDuration = (meeting) => {
-    if (!meeting) return 'N/A';
-    
-    const createdAt = parseDateTime(meeting.created_at);
-    const endedAt = parseDateTime(meeting.ended_at);
-    
-    if (!createdAt) {
-      return 'N/A';
-    }
-    
-    let endTime;
-    if (endedAt) {
-      endTime = endedAt;
-    } else if (meeting.status === 'completed') {
-      // Default to 1 hour if no end time but marked as completed
-      endTime = new Date(createdAt.getTime() + (60 * 60 * 1000));
-    } else {
-      return 'Ongoing';
-    }
-    
-    const durationMs = endTime.getTime() - createdAt.getTime();
-    
-    if (durationMs <= 0) {
-      return 'N/A';
-    }
-    
-    const totalMinutes = Math.floor(durationMs / (1000 * 60));
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else {
-      return `${minutes}m`;
-    }
-  };
-
   const formatDate = (dateValue) => {
     if (!dateValue) return 'N/A';
     
@@ -393,10 +352,10 @@ const AllMeetings = ({ onMeetingClick }) => {
   };
 
   // Add this useMemo to handle client-side sorting for all options
-  const sortedMeetings = useMemo(() => {
-    if (!meetings.length) return meetings;
+  const sortedDocuments = useMemo(() => {
+    if (!documents.length) return documents;
 
-    const sorted = [...meetings].sort((a, b) => {
+    const sorted = [...documents].sort((a, b) => {
       let aValue, bValue;
 
       switch (sortBy) {
@@ -432,23 +391,23 @@ const AllMeetings = ({ onMeetingClick }) => {
     });
 
     return sorted;
-  }, [meetings, sortBy, sortOrder, folders]);  // Dependencies: re-sort when these change
+  }, [documents, sortBy, sortOrder, folders]);  // Dependencies: re-sort when these change
 
-  const renderMeetingCard = (meeting) => {
-    const folder = folders.find(f => f.id === meeting.folder_id);
+  const renderDocumentCard = (document) => {
+    const folder = folders.find(f => f.id === document.folder_id);
     const folderColor = folder?.color || '#3B82F6';
-    const isSelected = selectedMeetings.includes(meeting.id || meeting._id);
-    const meetingId = meeting.id || meeting._id;
+    const isSelected = selectedDocuments.includes(document.id || document._id);
+    const documentId = document.id || document._id;
 
     return (
       <div
-        key={meetingId}
+        key={documentId}
         className={`bg-white dark:bg-gray-800 rounded-2xl border ${
           isSelected 
             ? 'border-blue-500 dark:border-blue-400 shadow-lg' 
             : 'border-gray-200 dark:border-gray-700'
         } shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group relative overflow-hidden`}
-        onClick={() => onMeetingClick(meetingId)}
+        onClick={() => onDocumentClick(documentId)}
       >
         {/* Selection checkbox */}
         <div 
@@ -456,7 +415,7 @@ const AllMeetings = ({ onMeetingClick }) => {
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            onClick={() => toggleMeetingSelection(meetingId)}
+            onClick={() => toggleDocumentSelection(documentId)}
             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             {isSelected ? (
@@ -478,7 +437,7 @@ const AllMeetings = ({ onMeetingClick }) => {
             <div className="flex-1 pr-4">
               <div className="flex items-center space-x-2 mb-2">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  {meeting.title || 'Untitled Meeting'}
+                  {document.title || 'Untitled Document'}
                 </h3>
               </div>
               
@@ -496,32 +455,32 @@ const AllMeetings = ({ onMeetingClick }) => {
               )}
               
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                {meeting.description || 'No description available'}
+                {document.description || 'No description available'}
               </p>
               
               <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
                 <div className="flex items-center space-x-1">
                   <Calendar className="w-4 h-4" />
                   <span>
-                    {formatDate(meeting.created_at)}
+                    {formatDate(document.created_at)}
                   </span>
                 </div>
                 
                 <div className="flex items-center space-x-1">
                   <Clock className="w-4 h-4" />
-                  <span>{formatDuration(meeting)}</span>
+                  <span>{document.file_type || 'text'}</span>
                 </div>
                 
                 <div className="flex items-center space-x-1">
-                  <Users className="w-4 h-4" />
-                  <span>{meeting.participants?.length || 0}</span>
+                  <FileText className="w-4 h-4" />
+                  <span>{document.content?.length || 0} chars</span>
                 </div>
               </div>
             </div>
             
             <div className="flex flex-col items-end space-y-2 flex-shrink-0">
-              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(meeting.status)}`}>
-                {meeting.status}
+              <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(document.status)}`}>
+                {document.status}
               </span>
               
               {/* Three-dot menu - allow overflow */}
@@ -529,7 +488,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setShowMeetingMenu(showMeetingMenu === meetingId ? null : meetingId);
+                    setShowDocumentMenu(showDocumentMenu === documentId ? null : documentId);
                   }}
                   className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
@@ -537,7 +496,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                 </button>
 
                 {/* Dropdown menu - positioned to extend outside card */}
-                {showMeetingMenu === meetingId && (
+                {showDocumentMenu === documentId && (
                   <div 
                     className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
                     style={{ 
@@ -549,8 +508,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onMeetingClick(meetingId);
-                          setShowMeetingMenu(null);
+                          onDocumentClick(documentId);
+                          setShowDocumentMenu(null);
                         }}
                         className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
@@ -561,8 +520,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setShowIndividualMoveDialog(meeting);
-                          setShowMeetingMenu(null);
+                          setShowIndividualMoveDialog(document);
+                          setShowDocumentMenu(null);
                         }}
                         className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
@@ -573,8 +532,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          shareIndividualMeeting(meetingId);
-                          setShowMeetingMenu(null);
+                          shareIndividualDocument(documentId);
+                          setShowDocumentMenu(null);
                         }}
                         className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
@@ -605,8 +564,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                downloadIndividualReport(meetingId, 'pdf');
-                                setShowMeetingMenu(null);
+                                downloadIndividualReport(documentId, 'pdf');
+                                setShowDocumentMenu(null);
                               }}
                               className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
@@ -615,8 +574,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                downloadIndividualReport(meetingId, 'json');
-                                setShowMeetingMenu(null);
+                                downloadIndividualReport(documentId, 'json');
+                                setShowDocumentMenu(null);
                               }}
                               className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
@@ -625,8 +584,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                downloadIndividualReport(meetingId, 'txt');
-                                setShowMeetingMenu(null);
+                                downloadIndividualReport(documentId, 'txt');
+                                setShowDocumentMenu(null);
                               }}
                               className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
@@ -641,8 +600,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setShowIndividualDeleteConfirm(meeting);
-                          setShowMeetingMenu(null);
+                          setShowIndividualDeleteConfirm(document);
+                          setShowDocumentMenu(null);
                         }}
                         className="w-full flex items-center space-x-3 px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                       >
@@ -656,17 +615,17 @@ const AllMeetings = ({ onMeetingClick }) => {
             </div>
           </div>
           
-          {/* Meeting stats */}
+          {/* Document stats */}
           <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-700">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
                 <FileText className="w-3 h-3" />
-                <span>{meeting.transcript ? 'Transcript' : 'No transcript'}</span>
+                <span>{document.transcript ? 'Transcript' : 'No transcript'}</span>
               </div>
               
               <div className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400">
                 <Users className="w-3 h-3" />
-                <span>{meeting.summary ? 'Summary' : 'No summary'}</span>
+                <span>{document.summary ? 'Summary' : 'No summary'}</span>
               </div>
             </div>
             
@@ -687,7 +646,7 @@ const AllMeetings = ({ onMeetingClick }) => {
 
   // Effect hooks
   useEffect(() => {
-    fetchMeetings(searchTerm, selectedFolder, page);
+    fetchDocuments(searchTerm, selectedFolder, page);
   }, [searchTerm, selectedFolder, page, sortBy, sortOrder]);
 
   useEffect(() => {
@@ -695,20 +654,20 @@ const AllMeetings = ({ onMeetingClick }) => {
   }, []);
 
   useEffect(() => {
-    setShowBulkActions(selectedMeetings.length > 0);
-  }, [selectedMeetings]);
+    setShowBulkActions(selectedDocuments.length > 0);
+  }, [selectedDocuments]);
 
   useEffect(() => {
-    // Close meeting menu when clicking outside
+    // Close document menu when clicking outside
     const handleClickOutside = (event) => {
-      if (showMeetingMenu && !event.target.closest('[data-menu-container]')) {
-        setShowMeetingMenu(null);
+      if (showDocumentMenu && !event.target.closest('[data-menu-container]')) {
+        setShowDocumentMenu(null);
       }
     };
 
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [showMeetingMenu]);
+  }, [showDocumentMenu]);
 
   const handleSearch = (value) => {
     setSearchTerm(value);
@@ -718,7 +677,7 @@ const AllMeetings = ({ onMeetingClick }) => {
   const handleFolderChange = (folderId) => {
     setSelectedFolder(folderId);
     setPage(1);
-    setSelectedMeetings([]);
+    setSelectedDocuments([]);
     setSelectAll(false);
   };
 
@@ -748,10 +707,10 @@ const AllMeetings = ({ onMeetingClick }) => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            All Meetings
+            All Documents
           </h2>
           <p className="text-gray-600 dark:text-gray-400">
-            Manage and explore your recorded meetings.
+            Manage and explore your documents.
           </p>
         </div>
 
@@ -810,7 +769,7 @@ const AllMeetings = ({ onMeetingClick }) => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search meetings..."
+            placeholder="Search documents..."
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -824,9 +783,9 @@ const AllMeetings = ({ onMeetingClick }) => {
           className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         >
           <option value="all">All Folders</option>
-          {folders.map(folder => (
+          {Array.isArray(folders) && folders.map(folder => (
             <option key={folder.id} value={folder.id}>
-              {folder.name} ({folder.meeting_count || 0})
+              {folder.name} ({folder.document_count || 0})
             </option>
           ))}
         </select>
@@ -859,7 +818,7 @@ const AllMeetings = ({ onMeetingClick }) => {
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 animate-slide-up">
           <div className="flex items-center justify-between">
             <span className="text-blue-700 dark:text-blue-300">
-              {selectedMeetings.length} meeting(s) selected
+              {selectedDocuments.length} document(s) selected
             </span>
             <div className="flex space-x-2">
               <button
@@ -871,7 +830,7 @@ const AllMeetings = ({ onMeetingClick }) => {
               </button>
               
               <button
-                onClick={() => exportMeetings('json')}
+                onClick={() => exportDocuments('json')}
                 className="flex items-center space-x-2 px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded text-sm transition-colors"
               >
                 <Download className="w-4 h-4" />
@@ -888,7 +847,7 @@ const AllMeetings = ({ onMeetingClick }) => {
               
               <button
                 onClick={() => {
-                  setSelectedMeetings([]);
+                  setSelectedDocuments([]);
                   setSelectAll(false);
                 }}
                 className="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-sm transition-colors"
@@ -900,15 +859,15 @@ const AllMeetings = ({ onMeetingClick }) => {
         </div>
       )}
 
-      {/* Meetings Display */}
-      {sortedMeetings.length === 0 ? (
+      {/* Documents Display */}
+      {sortedDocuments.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-            No meetings found
+            No documents found
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            {searchTerm ? 'Try adjusting your search terms' : 'Start by creating your first meeting'}
+            {searchTerm ? 'Try adjusting your search terms' : 'Start by uploading your first document'}
           </p>
         </div>
       ) : (
@@ -918,19 +877,19 @@ const AllMeetings = ({ onMeetingClick }) => {
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               style={{ overflow: 'visible' }}
             >
-              {sortedMeetings.map(renderMeetingCard)}
+              {sortedDocuments.map(renderDocumentCard)}
             </div>
           ) : (
             <div className="space-y-3" style={{ overflow: 'visible' }}>
-              {sortedMeetings.map((meeting) => {
-                const folder = folders.find(f => f.id === meeting.folder_id);
+              {sortedDocuments.map((document) => {
+                const folder = folders.find(f => f.id === document.folder_id);
                 const folderColor = folder?.color || '#3B82F6';
-                const isSelected = selectedMeetings.includes(meeting.id || meeting._id);
-                const meetingId = meeting.id || meeting._id;
+                const isSelected = selectedDocuments.includes(document.id || document._id);
+                const documentId = document.id || document._id;
                 
                 return (
                   <div
-                    key={meetingId}
+                    key={documentId}
                     className={`flex items-center space-x-4 p-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer group border-l-4 relative ${
                       isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''
                     }`}
@@ -938,11 +897,11 @@ const AllMeetings = ({ onMeetingClick }) => {
                       borderLeftColor: folderColor,
                       overflow: 'visible'
                     }}
-                    onClick={() => onMeetingClick(meetingId)}
+                    onClick={() => onDocumentClick(documentId)}
                   >
                     <div onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => toggleMeetingSelection(meetingId)}
+                        onClick={() => toggleDocumentSelection(documentId)}
                         className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
                         {isSelected ? (
@@ -960,16 +919,16 @@ const AllMeetings = ({ onMeetingClick }) => {
                     
                     <div className="flex-1">
                       <h3 className="font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {meeting.title || 'Untitled Meeting'}
+                        {document.title || 'Untitled Document'}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {folder?.name} • {new Date(meeting.created_at).toLocaleDateString()}
+                        {folder?.name} • {new Date(document.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     
                     <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(meeting.status)}`}>
-                        {meeting.status}
+                      <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(document.status)}`}>
+                        {document.status}
                       </span>
                       
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -977,7 +936,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setShowMeetingMenu(showMeetingMenu === meetingId ? null : meetingId);
+                              setShowDocumentMenu(showDocumentMenu === documentId ? null : documentId);
                             }}
                             className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
                           >
@@ -985,7 +944,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                           </button>
 
                           {/* Same dropdown menu as in grid view */}
-                          {showMeetingMenu === meetingId && (
+                          {showDocumentMenu === documentId && (
                             <div 
                               className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700"
                               style={{ 
@@ -997,8 +956,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    onMeetingClick(meetingId);
-                                    setShowMeetingMenu(null);
+                                    onDocumentClick(documentId);
+                                    setShowDocumentMenu(null);
                                   }}
                                   className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                 >
@@ -1009,8 +968,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setShowIndividualMoveDialog(meeting);
-                                    setShowMeetingMenu(null);
+                                    setShowIndividualMoveDialog(document);
+                                    setShowDocumentMenu(null);
                                   }}
                                   className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                 >
@@ -1021,8 +980,8 @@ const AllMeetings = ({ onMeetingClick }) => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    shareIndividualMeeting(meetingId);
-                                    setShowMeetingMenu(null);
+                                    shareIndividualDocument(documentId);
+                                    setShowDocumentMenu(null);
                                   }}
                                   className="w-full flex items-center space-x-3 px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                                 >
@@ -1030,13 +989,67 @@ const AllMeetings = ({ onMeetingClick }) => {
                                   <span>Share</span>
                                 </button>
 
+                                <div className="relative group/export">
+                                  <button
+                                    className="w-full flex items-center justify-between px-4 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                  >
+                                    <div className="flex items-center space-x-3">
+                                      <Download className="w-4 h-4" />
+                                      <span>Export</span>
+                                    </div>
+                                    <span className="text-xs">›</span>
+                                  </button>
+                                  
+                                  {/* Export submenu */}
+                                  <div 
+                                    className="absolute left-full top-0 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover/export:opacity-100 group-hover/export:visible transition-all duration-200"
+                                    style={{ 
+                                      zIndex: 10000,
+                                      marginLeft: '4px'
+                                    }}
+                                  >
+                                    <div className="py-2">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadIndividualReport(documentId, 'pdf');
+                                          setShowDocumentMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                      >
+                                        PDF
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadIndividualReport(documentId, 'json');
+                                          setShowDocumentMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                      >
+                                        JSON
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          downloadIndividualReport(documentId, 'txt');
+                                          setShowDocumentMenu(null);
+                                        }}
+                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                      >
+                                        TXT
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+
                                 <hr className="my-2 border-gray-200 dark:border-gray-700" />
 
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setShowIndividualDeleteConfirm(meeting);
-                                    setShowMeetingMenu(null);
+                                    setShowIndividualDeleteConfirm(document);
+                                    setShowDocumentMenu(null);
                                   }}
                                   className="w-full flex items-center space-x-3 px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                 >
@@ -1076,13 +1089,13 @@ const AllMeetings = ({ onMeetingClick }) => {
         </>
       )}
 
-      {/* Individual Meeting Move Dialog */}
+      {/* Individual Document Move Dialog */}
       {showIndividualMoveDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-96 max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Move Meeting
+                Move Document
               </h3>
               <button
                 onClick={() => setShowIndividualMoveDialog(null)}
@@ -1093,14 +1106,14 @@ const AllMeetings = ({ onMeetingClick }) => {
             </div>
             
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Move "{showIndividualMoveDialog.title || 'Untitled Meeting'}" to:
+              Move "{showIndividualMoveDialog.title || 'Untitled Document'}" to:
             </p>
             
             <div className="space-y-2 max-h-60 overflow-y-auto">
-              {folders.map(folder => (
+              {Array.isArray(folders) && folders.map(folder => (
                 <button
                   key={folder.id}
-                  onClick={() => moveIndividualMeeting(showIndividualMoveDialog.id || showIndividualMoveDialog._id, folder.id)}
+                  onClick={() => moveIndividualDocument(showIndividualMoveDialog.id || showIndividualMoveDialog._id, folder.id)}
                   disabled={folder.id === showIndividualMoveDialog.folder_id}
                   className={`w-full flex items-center space-x-3 p-3 rounded-lg transition-colors text-left ${
                     folder.id === showIndividualMoveDialog.folder_id
@@ -1134,13 +1147,13 @@ const AllMeetings = ({ onMeetingClick }) => {
         </div>
       )}
 
-      {/* Individual Meeting Delete Confirmation */}
+      {/* Individual Document Delete Confirmation */}
       {showIndividualDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-96 max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-red-600 dark:text-red-400">
-                Delete Meeting
+                Delete Document
               </h3>
               <button
                 onClick={() => setShowIndividualDeleteConfirm(null)}
@@ -1151,7 +1164,7 @@ const AllMeetings = ({ onMeetingClick }) => {
             </div>
             
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Are you sure you want to delete "{showIndividualDeleteConfirm.title || 'Untitled Meeting'}"? This action cannot be undone.
+              Are you sure you want to delete "{showIndividualDeleteConfirm.title || 'Untitled Document'}"? This action cannot be undone.
             </p>
             
             <div className="flex justify-end space-x-3">
@@ -1163,7 +1176,7 @@ const AllMeetings = ({ onMeetingClick }) => {
               </button>
               <button
                 onClick={() => {
-                  deleteMeeting(showIndividualDeleteConfirm.id || showIndividualDeleteConfirm._id);
+                  deleteDocument(showIndividualDeleteConfirm.id || showIndividualDeleteConfirm._id);
                   setShowIndividualDeleteConfirm(null);
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
@@ -1181,7 +1194,7 @@ const AllMeetings = ({ onMeetingClick }) => {
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-96 max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Move Meetings
+                Move Documents
               </h3>
               <button
                 onClick={() => setShowMoveDialog(false)}
@@ -1192,14 +1205,14 @@ const AllMeetings = ({ onMeetingClick }) => {
             </div>
             
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-              Select a folder to move {selectedMeetings.length} meeting(s) to:
+              Select a folder to move {selectedDocuments.length} document(s) to:
             </p>
             
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {folders.map(folder => (
                 <button
                   key={folder.id}
-                  onClick={() => moveMeetings(folder.id)}
+                  onClick={() => moveDocuments(folder.id)}
                   className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
                 >
                   <div 
@@ -1210,7 +1223,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                     {folder.name}
                   </span>
                   <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {folder.meeting_count || 0} meetings
+                    {folder.document_count || 0} documents
                   </span>
                 </button>
               ))}
@@ -1311,7 +1324,7 @@ const AllMeetings = ({ onMeetingClick }) => {
             </div>
             
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Are you sure you want to delete {selectedMeetings.length} selected meeting(s)? This action cannot be undone.
+              Are you sure you want to delete {selectedDocuments.length} selected document(s)? This action cannot be undone.
             </p>
             
             <div className="flex justify-end space-x-3">
@@ -1322,7 +1335,7 @@ const AllMeetings = ({ onMeetingClick }) => {
                 Cancel
               </button>
               <button
-                onClick={bulkDeleteMeetings}
+                onClick={bulkDeleteDocuments}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
               >
                 Delete
@@ -1335,4 +1348,4 @@ const AllMeetings = ({ onMeetingClick }) => {
   );
 };
 
-export default AllMeetings;
+export default DocumentsPage;

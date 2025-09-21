@@ -14,7 +14,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import MarkdownRenderer from './MarkdownRenderer';
 
-const MeetingChatbot = ({ meetingId }) => {
+const DocumentChatbot = ({ documentId }) => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -26,7 +26,7 @@ const MeetingChatbot = ({ meetingId }) => {
   useEffect(() => {
     loadChatHistory();
     loadSuggestions();
-  }, [meetingId]);
+  }, [documentId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -38,7 +38,7 @@ const MeetingChatbot = ({ meetingId }) => {
 
   const loadChatHistory = async () => {
     try {
-      const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/history`);
+      const response = await makeAuthenticatedRequest(`/chatbot/${documentId}/history`);
       if (response.ok) {
         const data = await response.json();
         // Fix: Ensure history is an array
@@ -64,7 +64,7 @@ const MeetingChatbot = ({ meetingId }) => {
 
   const loadSuggestions = async () => {
     try {
-      const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/suggestions`);
+      const response = await makeAuthenticatedRequest(`/chatbot/${documentId}/suggestions`);
       if (response.ok) {
         const data = await response.json();
         setSuggestions(data.suggestions || []);
@@ -89,7 +89,7 @@ const MeetingChatbot = ({ meetingId }) => {
     setIsLoading(true);
 
     try {
-      const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/chat`, {
+      const response = await makeAuthenticatedRequest(`/chatbot/${documentId}/chat`, {
         method: 'POST',
         body: JSON.stringify({ message: question }) // Fix: Use 'message' key
       });
@@ -158,7 +158,7 @@ const MeetingChatbot = ({ meetingId }) => {
       setMessages([]);
       
       // Also clear from database
-      const response = await makeAuthenticatedRequest(`/chatbot/${meetingId}/history`, {
+      const response = await makeAuthenticatedRequest(`/chatbot/${documentId}/history`, {
         method: 'DELETE'
       });
       
@@ -220,7 +220,7 @@ const MeetingChatbot = ({ meetingId }) => {
                 AI Assistant
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Ask questions about this meeting
+                Ask questions about this document
               </p>
             </div>
           </div>
@@ -276,7 +276,7 @@ const MeetingChatbot = ({ meetingId }) => {
               Start a Conversation
             </h3>
             <p className="text-gray-600 dark:text-gray-400">
-              Ask me anything about this meeting. I can help you find specific information, summarize key points, or clarify details.
+              Ask me anything about this document. I can help you find specific information, summarize key points, or clarify details.
             </p>
           </div>
         ) : (
@@ -379,7 +379,7 @@ const MeetingChatbot = ({ meetingId }) => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Ask a question about this meeting..."
+              placeholder="Ask a question about this document..."
               disabled={isLoading}
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               rows="1"
@@ -403,4 +403,4 @@ const MeetingChatbot = ({ meetingId }) => {
   );
 };
 
-export default MeetingChatbot;
+export default DocumentChatbot;

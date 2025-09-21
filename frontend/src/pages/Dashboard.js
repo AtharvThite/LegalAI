@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Clock, Users, Globe, TrendingUp, Calendar, Zap, Activity, Video, Plus } from 'lucide-react';
+import { FileText, Clock, Users, Globe, TrendingUp, Calendar, Zap, Activity, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
-  const [recentMeetings, setRecentMeetings] = useState([]);
+const Documents = ({ onNavigate, onDocumentClick }) => {
+  const [recentDocuments, setRecentDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [joinRoomId, setJoinRoomId] = useState('');
   const { makeAuthenticatedRequest } = useAuth();
 
   const stats = [
-    { label: 'Total Meetings', value: '24', icon: FileText, color: 'blue', change: '+12%' },
-    { label: 'Hours Recorded', value: '18.5', icon: Clock, color: 'green', change: '+8%' },
-    { label: 'Participants', value: '156', icon: Users, color: 'purple', change: '+23%' },
-    { label: 'Languages', value: '5', icon: Globe, color: 'orange', change: '+1' },
+    { label: 'Total Documents', value: '24', icon: FileText, color: 'blue', change: '+12%' },
+    { label: 'Words Processed', value: '45.2K', icon: FileText, color: 'green', change: '+18%' },
+    { label: 'Summaries Generated', value: '18', icon: FileText, color: 'purple', change: '+5' },
+    { label: 'Knowledge Graphs', value: '12', icon: FileText, color: 'orange', change: '+3' },
   ];
 
   const recentActivities = [
-    { title: 'Team Standup completed', time: '2 hours ago', type: 'success', icon: FileText },
-    { title: 'Client Call transcription ready', time: '4 hours ago', type: 'info', icon: Zap },
-    { title: 'Project Review summary generated', time: '1 day ago', type: 'success', icon: Activity },
-    { title: 'Weekly report exported', time: '2 days ago', type: 'info', icon: TrendingUp },
+    { title: 'Legal contract analyzed', time: '2 hours ago', type: 'success', icon: FileText },
+    { title: 'Document summary generated', time: '4 hours ago', type: 'info', icon: Zap },
+    { title: 'Knowledge graph created', time: '1 day ago', type: 'success', icon: Activity },
+    { title: 'Report exported', time: '2 days ago', type: 'info', icon: TrendingUp },
   ];
 
   const formatDate = (dateValue) => {
@@ -53,27 +52,20 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
     }
   };
 
-  const handleJoinRoom = () => {
-    if (joinRoomId.trim()) {
-      onJoinRoom(joinRoomId.trim().toUpperCase());
-      setJoinRoomId('');
-    }
-  };
-
   useEffect(() => {
-    const fetchRecentMeetings = async () => {
+    const fetchRecentDocuments = async () => {
       try {
-        const response = await makeAuthenticatedRequest('/meetings?limit=5');
+        const response = await makeAuthenticatedRequest('/documents?limit=5');
         const data = await response.json();
-        setRecentMeetings(data.meetings || []);
+        setRecentDocuments(data.documents || []);
       } catch (error) {
-        console.error('Error fetching recent meetings:', error);
+        console.error('Error fetching recent documents:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRecentMeetings();
+    fetchRecentDocuments();
   }, [makeAuthenticatedRequest]);
 
   return (
@@ -86,7 +78,7 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
               Welcome back! 👋
             </h2>
             <p className="text-blue-100 text-lg">
-              Here's what's happening with your meetings today.
+              Here's what's happening with your documents today.
             </p>
           </div>
           <div className="hidden md:block">
@@ -95,15 +87,15 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
         </div>
       </div>
 
-      {/* Quick Meeting Actions */}
+      {/* Quick Document Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Start New Meeting
+            Quick Actions
           </h3>
           <div className="space-y-3">
             <button 
-              onClick={() => onNavigate('new-meeting')}
+              onClick={() => onNavigate('new-document')}
               className="w-full p-4 text-left bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors border-2 border-dashed border-blue-300 dark:border-blue-600"
             >
               <div className="flex items-center space-x-3">
@@ -111,70 +103,24 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
                   <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <span className="block text-sm font-medium text-blue-900 dark:text-blue-100">Record Meeting</span>
-                  <span className="text-xs text-blue-700 dark:text-blue-300">Audio recording with AI transcription</span>
+                  <span className="block text-sm font-medium text-blue-900 dark:text-blue-100">Upload Document</span>
+                  <span className="text-xs text-blue-700 dark:text-blue-300">Upload and analyze documents</span>
                 </div>
               </div>
             </button>
             
             <button 
-              onClick={() => onNavigate('new-webrtc-meeting')}
+              onClick={() => onNavigate('documents')}
               className="w-full p-4 text-left bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors border-2 border-dashed border-green-300 dark:border-green-600"
             >
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-green-100 dark:bg-green-900/40 rounded-lg">
-                  <Video className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <FileText className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <span className="block text-sm font-medium text-green-900 dark:text-green-100">Video Meeting</span>
-                  <span className="text-xs text-green-700 dark:text-green-300">Group video call with live transcription</span>
+                  <span className="block text-sm font-medium text-green-900 dark:text-green-100">View Documents</span>
+                  <span className="text-xs text-green-700 dark:text-green-300">Browse all your documents</span>
                 </div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Join Meeting
-          </h3>
-          <div className="space-y-3">
-            <input
-              type="text"
-              value={joinRoomId}
-              onChange={(e) => setJoinRoomId(e.target.value.toUpperCase())}
-              placeholder="Enter room ID..."
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              maxLength={8}
-            />
-            <button
-              onClick={handleJoinRoom}
-              disabled={!joinRoomId.trim()}
-              className="w-full px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-400 text-white rounded-lg transition-colors font-medium"
-            >
-              Join Room
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Quick Actions
-          </h3>
-          <div className="space-y-3">
-            <button 
-              onClick={() => onNavigate('meetings')}
-              className="w-full p-3 text-left bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg transition-colors"
-            >
-              <div className="flex items-center space-x-3">
-                <TrendingUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                <span className="text-sm font-medium text-purple-900 dark:text-purple-100">View All Meetings</span>
-              </div>
-            </button>
-            <button className="w-full p-3 text-left bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg transition-colors">
-              <div className="flex items-center space-x-3">
-                <Calendar className="w-5 h-5 text-green-600 dark:text-green-400" />
-                <span className="text-sm font-medium text-green-900 dark:text-green-100">Schedule Meeting</span>
               </div>
             </button>
           </div>
@@ -215,10 +161,10 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Recent Meetings
+                Recent Documents
               </h3>
               <button 
-                onClick={() => onNavigate('meetings')}
+                onClick={() => onNavigate('documents')}
                 className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
               >
                 View All
@@ -238,27 +184,23 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
                   </div>
                 ))}
               </div>
-            ) : recentMeetings.length > 0 ? (
+            ) : recentDocuments.length > 0 ? (
               <div className="space-y-4">
-                {recentMeetings.map((meeting) => (
+                {recentDocuments.map((document) => (
                   <div 
-                    key={meeting.id} 
-                    onClick={() => onMeetingClick(meeting.id)}
+                    key={document.id} 
+                    onClick={() => onDocumentClick(document.id)}
                     className="flex items-start space-x-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors cursor-pointer group"
                   >
                     <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
-                      {meeting.meeting_type === 'webrtc' ? (
-                        <Video className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      ) : (
-                        <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      )}
+                      <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                        {meeting.title || 'Untitled Meeting'}
+                        {document.title || 'Untitled Document'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {formatDate(meeting.created_at)} • {meeting.status} • {meeting.meeting_type === 'webrtc' ? 'Video Meeting' : 'Recording'}
+                        {formatDate(document.created_at)} • {document.status} • Document
                       </p>
                     </div>
                   </div>
@@ -267,12 +209,12 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
             ) : (
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 dark:text-gray-400">No meetings yet</p>
+                <p className="text-gray-600 dark:text-gray-400">No documents yet</p>
                 <button 
-                  onClick={() => onNavigate('new-meeting')}
+                  onClick={() => onNavigate('new-document')}
                   className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
                 >
-                  Create your first meeting
+                  Create your first document
                 </button>
               </div>
             )}
@@ -284,19 +226,19 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
           <h3 className="text-lg font-semibold mb-4">This Week</h3>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-indigo-100">Meetings</span>
+              <span className="text-indigo-100">Documents</span>
               <span className="font-semibold">8</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-indigo-100">Total Time</span>
-              <span className="font-semibold">6.5h</span>
+              <span className="text-indigo-100">Total Words</span>
+              <span className="font-semibold">12,345</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-indigo-100">Participants</span>
-              <span className="font-semibold">42</span>
+              <span className="text-indigo-100">Summaries</span>
+              <span className="font-semibold">5</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-indigo-100">Video Calls</span>
+              <span className="text-indigo-100">Knowledge Graphs</span>
               <span className="font-semibold">3</span>
             </div>
           </div>
@@ -306,4 +248,4 @@ const Dashboard = ({ onNavigate, onMeetingClick, onJoinRoom }) => {
   );
 };
 
-export default Dashboard;
+export default Documents;

@@ -127,10 +127,16 @@ export const AuthProvider = ({ children }) => {
     }
 
     const headers = {
-      'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
       ...options.headers
     };
+
+    // Don't set Content-Type for FormData - let the browser set it automatically
+    if (options.body instanceof FormData) {
+      delete headers['Content-Type'];
+    } else {
+      headers['Content-Type'] = 'application/json';
+    }
 
     try {
       const response = await fetch(`${API_BASE}${url}`, {

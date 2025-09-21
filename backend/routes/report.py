@@ -133,30 +133,30 @@ def parse_markdown_for_pdf(markdown_text):
     
     return flowables
 
-@report_bp.route('/<meeting_id>/<format_type>', methods=['GET'])
+@report_bp.route('/<document_id>/<format_type>', methods=['GET'])
 @jwt_required()
-def download_report(meeting_id, format_type):
+def download_report(document_id, format_type):
     user_id = get_jwt_identity()
     
-    # Verify meeting ownership
-    if is_valid_objectid(meeting_id):
+    # Verify document ownership
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    meeting = current_app.mongo.db.meetings.find_one(query)
+    document = current_app.mongo.db.documents.find_one(query)
     
-    if not meeting:
-        return jsonify({'error': 'Meeting not found'}), 404
+    if not document:
+        return jsonify({'error': 'Document not found'}), 404
     
-    # Get all meeting data
-    search_id = meeting.get('id', str(meeting['_id']))
-    transcript_doc = current_app.mongo.db.transcriptions.find_one({'meeting_id': search_id})
-    summary_doc = current_app.mongo.db.summaries.find_one({'meeting_id': search_id})
-    knowledge_graph_doc = current_app.mongo.db.knowledge_graphs.find_one({'meeting_id': search_id})
+    # Get all document data
+    search_id = document.get('id', str(document['_id']))
+    transcript_doc = current_app.mongo.db.transcriptions.find_one({'document_id': search_id})
+    summary_doc = current_app.mongo.db.summaries.find_one({'document_id': search_id})
+    knowledge_graph_doc = current_app.mongo.db.knowledge_graphs.find_one({'document_id': search_id})
     
     transcript = transcript_doc.get('transcript', '') if transcript_doc else 'No transcript available'
     summary = summary_doc.get('summary', '') if summary_doc else 'No summary available'
@@ -164,13 +164,13 @@ def download_report(meeting_id, format_type):
     
     try:
         if format_type == 'pdf':
-            return generate_pdf_report(meeting, transcript, summary, knowledge_graph)
+            return generate_pdf_report(document, transcript, summary, knowledge_graph)
         elif format_type == 'json':
-            return generate_json_report(meeting, transcript, summary, knowledge_graph)
+            return generate_json_report(document, transcript, summary, knowledge_graph)
         elif format_type == 'csv':
-            return generate_csv_report(meeting, transcript, summary, knowledge_graph)
+            return generate_csv_report(document, transcript, summary, knowledge_graph)
         elif format_type == 'txt':
-            return generate_txt_report(meeting, transcript, summary, knowledge_graph)
+            return generate_txt_report(document, transcript, summary, knowledge_graph)
         else:
             return jsonify({'error': 'Invalid format type'}), 400
     except Exception as e:
@@ -179,7 +179,7 @@ def download_report(meeting_id, format_type):
         traceback.print_exc()
         return jsonify({'error': f'Failed to generate report: {str(e)}'}), 500
 
-def generate_pdf_report(meeting, transcript, summary, knowledge_graph):
+def generate_pdf_report(document, transcript, summary, knowledge_graph):
     """Generate PDF report using ReportLab with markdown parsing"""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -194,19 +194,19 @@ def generate_pdf_report(meeting, transcript, summary, knowledge_graph):
         spaceAfter=30,
         textColor=colors.HexColor('#2563EB')
     )
-    story.append(Paragraph(f"Meeting Report: {meeting.get('title', 'Untitled')}", title_style))
+    story.append(Paragraph(f"Document Report: {document.get('title', 'Untitled')}", title_style))
     story.append(Spacer(1, 20))
     
-    # Meeting Info Table
-    meeting_info = [
-        ['Meeting ID:', meeting.get('id', 'N/A')],
-        ['Date:', _format_datetime_for_display(meeting.get('created_at'))],
-        ['Language:', meeting.get('language', 'N/A')],
-        ['Status:', meeting.get('status', 'N/A')],
-        ['Duration:', _calculate_duration(meeting)]
+    # Document Info Table
+    document_info = [
+        ['Document ID:', document.get('id', 'N/A')],
+        ['Date:', _format_datetime_for_display(document.get('created_at'))],
+        ['Language:', document.get('language', 'N/A')],
+        ['Status:', document.get('status', 'N/A')],
+        ['Duration:', _calculate_duration(document)]
     ]
     
-    info_table = Table(meeting_info, colWidths=[2*inch, 4*inch])
+    info_table = Table(document_info, colWidths=[2*inch, 4*inch])
     info_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F3F4F6')),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
@@ -228,7 +228,7 @@ def generate_pdf_report(meeting, transcript, summary, knowledge_graph):
             spaceAfter=20,
             textColor=colors.HexColor('#1F2937')
         )
-        story.append(Paragraph("Meeting Summary", summary_heading))
+        story.append(Paragraph("Document Summary", summary_heading))
         story.append(Spacer(1, 12))
         
         # Parse and add markdown content
@@ -262,19 +262,19 @@ def generate_pdf_report(meeting, transcript, summary, knowledge_graph):
         buffer,
         mimetype='application/pdf',
         as_attachment=True,
-        download_name=f"meeting_{meeting.get('id', 'report')}.pdf"
+        download_name=f"document_{document.get('id', 'report')}.pdf"
     )
 
-def generate_json_report(meeting, transcript, summary, knowledge_graph):
+def generate_json_report(document, transcript, summary, knowledge_graph):
     """Generate JSON report"""
     report_data = {
-        'meeting_info': {
-            'id': meeting.get('id'),
-            'title': meeting.get('title'),
-            'created_at': _format_datetime_for_display(meeting.get('created_at')),
-            'language': meeting.get('language'),
-            'status': meeting.get('status'),
-            'participants': meeting.get('participants', [])
+        'document_info': {
+            'id': document.get('id'),
+            'title': document.get('title'),
+            'created_at': _format_datetime_for_display(document.get('created_at')),
+            'language': document.get('language'),
+            'status': document.get('status'),
+            'participants': document.get('participants', [])
         },
         'transcript': transcript,
         'summary': summary,
@@ -289,20 +289,20 @@ def generate_json_report(meeting, transcript, summary, knowledge_graph):
         buffer,
         mimetype='application/json',
         as_attachment=True,
-        download_name=f"meeting_{meeting.get('id', 'report')}.json"
+        download_name=f"document_{document.get('id', 'report')}.json"
     )
 
-def generate_csv_report(meeting, transcript, summary, knowledge_graph):
+def generate_csv_report(document, transcript, summary, knowledge_graph):
     """Generate CSV report with action items and key data"""
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     
-    # Meeting info
-    writer.writerow(['Meeting Report'])
-    writer.writerow(['Title', meeting.get('title', 'N/A')])
-    writer.writerow(['ID', meeting.get('id', 'N/A')])
-    writer.writerow(['Date', _format_datetime_for_display(meeting.get('created_at'))])
-    writer.writerow(['Language', meeting.get('language', 'N/A')])
+    # Document info
+    writer.writerow(['Document Report'])
+    writer.writerow(['Title', document.get('title', 'N/A')])
+    writer.writerow(['ID', document.get('id', 'N/A')])
+    writer.writerow(['Date', _format_datetime_for_display(document.get('created_at'))])
+    writer.writerow(['Language', document.get('language', 'N/A')])
     writer.writerow([])
     
     # Action items
@@ -334,20 +334,20 @@ def generate_csv_report(meeting, transcript, summary, knowledge_graph):
         io.BytesIO(buffer.getvalue().encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
-        download_name=f"meeting_{meeting.get('id', 'report')}.csv"
+        download_name=f"document_{document.get('id', 'report')}.csv"
     )
 
-def generate_txt_report(meeting, transcript, summary, knowledge_graph):
+def generate_txt_report(document, transcript, summary, knowledge_graph):
     """Generate plain text report"""
     report_lines = [
-        f"MEETING REPORT",
+        f"DOCUMENT REPORT",
         f"=" * 50,
         f"",
-        f"Title: {meeting.get('title', 'N/A')}",
-        f"Meeting ID: {meeting.get('id', 'N/A')}",
-        f"Date: {_format_datetime_for_display(meeting.get('created_at'))}",
-        f"Language: {meeting.get('language', 'N/A')}",
-        f"Status: {meeting.get('status', 'N/A')}",
+        f"Title: {document.get('title', 'N/A')}",
+        f"Document ID: {document.get('id', 'N/A')}",
+        f"Date: {_format_datetime_for_display(document.get('created_at'))}",
+        f"Language: {document.get('language', 'N/A')}",
+        f"Status: {document.get('status', 'N/A')}",
         f"",
         f"SUMMARY",
         f"-" * 20,
@@ -389,13 +389,13 @@ def generate_txt_report(meeting, transcript, summary, knowledge_graph):
         buffer,
         mimetype='text/plain',
         as_attachment=True,
-        download_name=f"meeting_{meeting.get('id', 'report')}.txt"
+        download_name=f"document_{document.get('id', 'report')}.txt"
     )
 
-def _calculate_duration(meeting):
-    """Calculate meeting duration"""
-    created = meeting.get('created_at')
-    ended = meeting.get('ended_at')
+def _calculate_duration(document):
+    """Calculate document duration"""
+    created = document.get('created_at')
+    ended = document.get('ended_at')
     
     if created and ended:
         # Ensure both are datetime objects
@@ -443,58 +443,58 @@ def bulk_export():
     user_id = get_jwt_identity()
     data = request.json
     
-    meeting_ids = data.get('meeting_ids', [])
+    document_ids = data.get('document_ids', [])
     format_type = data.get('format', 'json')
     
-    if not meeting_ids:
-        return jsonify({'error': 'No meetings selected'}), 400
+    if not document_ids:
+        return jsonify({'error': 'No documents selected'}), 400
     
-    # Get all meetings
-    meetings_data = []
-    for meeting_id in meeting_ids:
-        if _is_valid_objectid(meeting_id):
+    # Get all documents
+    documents_data = []
+    for document_id in document_ids:
+        if _is_valid_objectid(document_id):
             query = {
-                '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+                '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
                 'user_id': user_id
             }
         else:
-            query = {'id': meeting_id, 'user_id': user_id}
+            query = {'id': document_id, 'user_id': user_id}
         
-        meeting = current_app.mongo.db.meetings.find_one(query)
-        if meeting:
+        document = current_app.mongo.db.documents.find_one(query)
+        if document:
             # Get related data
-            search_id = meeting.get('id', str(meeting['_id']))
-            transcript_doc = current_app.mongo.db.transcriptions.find_one({'meeting_id': search_id})
-            summary_doc = current_app.mongo.db.summaries.find_one({'meeting_id': search_id})
-            knowledge_graph_doc = current_app.mongo.db.knowledge_graphs.find_one({'meeting_id': search_id})
+            search_id = document.get('id', str(document['_id']))
+            transcript_doc = current_app.mongo.db.transcriptions.find_one({'document_id': search_id})
+            summary_doc = current_app.mongo.db.summaries.find_one({'document_id': search_id})
+            knowledge_graph_doc = current_app.mongo.db.knowledge_graphs.find_one({'document_id': search_id})
             
-            meeting_data = {
-                'meeting_info': {
-                    'id': meeting.get('id'),
-                    'title': meeting.get('title'),
-                    'created_at': _format_datetime_for_display(meeting.get('created_at')),
-                    'language': meeting.get('language'),
-                    'status': meeting.get('status'),
-                    'participants': meeting.get('participants', [])
+            document_data = {
+                'document_info': {
+                    'id': document.get('id'),
+                    'title': document.get('title'),
+                    'created_at': _format_datetime_for_display(document.get('created_at')),
+                    'language': document.get('language'),
+                    'status': document.get('status'),
+                    'participants': document.get('participants', [])
                 },
                 'transcript': transcript_doc.get('transcript', '') if transcript_doc else '',
                 'summary': summary_doc.get('summary', '') if summary_doc else '',
                 'knowledge_graph': knowledge_graph_doc.get('graph', {}) if knowledge_graph_doc else {}
             }
-            meetings_data.append(meeting_data)
+            documents_data.append(document_data)
     
     try:
         if format_type == 'json':
-            return _export_bulk_json(meetings_data)
+            return _export_bulk_json(documents_data)
         elif format_type == 'csv':
-            return _export_bulk_csv(meetings_data)
+            return _export_bulk_csv(documents_data)
         elif format_type == 'zip':
-            return _export_bulk_zip(meetings_data, 'txt')
+            return _export_bulk_zip(documents_data, 'txt')
         else:
             return jsonify({'error': 'Invalid format type'}), 400
     except Exception as e:
         print(f"Error in bulk export: {e}")
-        return jsonify({'error': f'Failed to export meetings: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to export documents: {str(e)}'}), 500
 
 def _is_valid_objectid(id_string):
     """Check if string is a valid ObjectId"""
@@ -504,15 +504,15 @@ def _is_valid_objectid(id_string):
     except:
         return False
 
-def _export_bulk_json(meetings_data):
-    """Export all meetings as a single JSON file"""
+def _export_bulk_json(documents_data):
+    """Export all documents as a single JSON file"""
     export_data = {
         'export_info': {
             'generated_at': datetime.utcnow().isoformat(),
-            'total_meetings': len(meetings_data),
+            'total_documents': len(documents_data),
             'format': 'json'
         },
-        'meetings': meetings_data
+        'documents': documents_data
     }
     
     json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
@@ -522,33 +522,33 @@ def _export_bulk_json(meetings_data):
         buffer,
         mimetype='application/json',
         as_attachment=True,
-        download_name=f"meetings_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        download_name=f"documents_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     )
 
-def _export_bulk_csv(meetings_data):
-    """Export all meetings as CSV"""
+def _export_bulk_csv(documents_data):
+    """Export all documents as CSV"""
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     
     # Headers
     writer.writerow([
-        'Meeting ID', 'Title', 'Date', 'Language', 'Status', 
+        'Document ID', 'Title', 'Date', 'Language', 'Status', 
         'Participants', 'Summary', 'Action Items Count', 'Topics Count'
     ])
     
     # Data rows
-    for meeting_data in meetings_data:
-        meeting_info = meeting_data['meeting_info']
-        kg = meeting_data.get('knowledge_graph', {})
+    for document_data in documents_data:
+        document_info = document_data['document_info']
+        kg = document_data.get('knowledge_graph', {})
         
         writer.writerow([
-            meeting_info.get('id', 'N/A'),
-            meeting_info.get('title', 'N/A'),
-            meeting_info.get('created_at', 'N/A'),
-            meeting_info.get('language', 'N/A'),
-            meeting_info.get('status', 'N/A'),
-            ', '.join(meeting_info.get('participants', [])),
-            meeting_data.get('summary', 'N/A')[:100] + '...' if len(meeting_data.get('summary', '')) > 100 else meeting_data.get('summary', 'N/A'),
+            document_info.get('id', 'N/A'),
+            document_info.get('title', 'N/A'),
+            document_info.get('created_at', 'N/A'),
+            document_info.get('language', 'N/A'),
+            document_info.get('status', 'N/A'),
+            ', '.join(document_info.get('participants', [])),
+            document_data.get('summary', 'N/A')[:100] + '...' if len(document_data.get('summary', '')) > 100 else document_data.get('summary', 'N/A'),
             len(kg.get('action_items', [])),
             len(kg.get('topics', []))
         ])
@@ -558,43 +558,43 @@ def _export_bulk_csv(meetings_data):
         io.BytesIO(buffer.getvalue().encode('utf-8')),
         mimetype='text/csv',
         as_attachment=True,
-        download_name=f"meetings_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        download_name=f"documents_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     )
 
-def _export_bulk_zip(meetings_data, format_type):
-    """Export meetings as ZIP file with individual files"""
+def _export_bulk_zip(documents_data, format_type):
+    """Export documents as ZIP file with individual files"""
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for i, meeting_data in enumerate(meetings_data):
-            meeting_info = meeting_data['meeting_info']
-            meeting_id = meeting_info.get('id', f'meeting_{i+1}')
+        for i, document_data in enumerate(documents_data):
+            document_info = document_data['document_info']
+            document_id = document_info.get('id', f'document_{i+1}')
             
             if format_type == 'json':
-                filename = f"{meeting_id}.json"
-                content = json.dumps(meeting_data, indent=2, ensure_ascii=False)
+                filename = f"{document_id}.json"
+                content = json.dumps(document_data, indent=2, ensure_ascii=False)
                 zip_file.writestr(filename, content.encode('utf-8'))
                 
             elif format_type == 'txt':
-                filename = f"{meeting_id}.txt"
-                content = _create_txt_content(meeting_data)
+                filename = f"{document_id}.txt"
+                content = _create_txt_content(document_data)
                 zip_file.writestr(filename, content.encode('utf-8'))
                 
             elif format_type == 'csv':
-                filename = f"{meeting_id}.csv"
+                filename = f"{document_id}.csv"
                 csv_buffer = io.StringIO()
                 writer = csv.writer(csv_buffer)
                 
-                # Meeting info
-                writer.writerow(['Meeting Report'])
-                writer.writerow(['Title', meeting_info.get('title', 'N/A')])
-                writer.writerow(['ID', meeting_info.get('id', 'N/A')])
-                writer.writerow(['Date', meeting_info.get('created_at', 'N/A')])
-                writer.writerow(['Language', meeting_info.get('language', 'N/A')])
+                # Document info
+                writer.writerow(['Document Report'])
+                writer.writerow(['Title', document_info.get('title', 'N/A')])
+                writer.writerow(['ID', document_info.get('id', 'N/A')])
+                writer.writerow(['Date', document_info.get('created_at', 'N/A')])
+                writer.writerow(['Language', document_info.get('language', 'N/A')])
                 writer.writerow([])
                 
                 # Action items
-                kg = meeting_data.get('knowledge_graph', {})
+                kg = document_data.get('knowledge_graph', {})
                 if kg.get('action_items'):
                     writer.writerow(['Action Items'])
                     writer.writerow(['Task', 'Assignee', 'Due Date', 'Priority'])
@@ -616,7 +616,7 @@ def _export_bulk_zip(meetings_data, format_type):
                 
                 # Summary
                 writer.writerow(['Summary'])
-                writer.writerow([meeting_data.get('summary', 'No summary available')])
+                writer.writerow([document_data.get('summary', 'No summary available')])
                 
                 content = csv_buffer.getvalue()
                 zip_file.writestr(filename, content.encode('utf-8'))
@@ -627,31 +627,31 @@ def _export_bulk_zip(meetings_data, format_type):
         zip_buffer,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=f"meetings_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        download_name=f"documents_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     )
 
-def _create_txt_content(meeting_data):
-    """Create text content for a meeting"""
-    meeting_info = meeting_data['meeting_info']
+def _create_txt_content(document_data):
+    """Create text content for a document"""
+    document_info = document_data['document_info']
     lines = [
-        f"MEETING REPORT",
+        f"DOCUMENT REPORT",
         f"=" * 50,
         f"",
-        f"Title: {meeting_info.get('title', 'N/A')}",
-        f"Meeting ID: {meeting_info.get('id', 'N/A')}",
-        f"Date: {meeting_info.get('created_at', 'N/A')}",
-        f"Language: {meeting_info.get('language', 'N/A')}",
-        f"Status: {meeting_info.get('status', 'N/A')}",
-        f"Participants: {', '.join(meeting_info.get('participants', []))}",
+        f"Title: {document_info.get('title', 'N/A')}",
+        f"Document ID: {document_info.get('id', 'N/A')}",
+        f"Date: {document_info.get('created_at', 'N/A')}",
+        f"Language: {document_info.get('language', 'N/A')}",
+        f"Status: {document_info.get('status', 'N/A')}",
+        f"Participants: {', '.join(document_info.get('participants', []))}",
         f"",
         f"SUMMARY",
         f"-" * 20,
-        meeting_data.get('summary', 'No summary available'),
+        document_data.get('summary', 'No summary available'),
         f"",
     ]
     
     # Add action items if available
-    kg = meeting_data.get('knowledge_graph', {})
+    kg = document_data.get('knowledge_graph', {})
     if kg.get('action_items'):
         lines.extend([
             f"ACTION ITEMS",
@@ -675,7 +675,7 @@ def _create_txt_content(meeting_data):
     lines.extend([
         f"FULL TRANSCRIPT",
         f"-" * 20,
-        meeting_data.get('transcript', 'No transcript available')
+        document_data.get('transcript', 'No transcript available')
     ])
     
     return "\n".join(lines)

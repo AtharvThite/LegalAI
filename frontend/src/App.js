@@ -4,12 +4,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
-import NewMeeting from './pages/NewMeeting';
-import NewWebRTCMeeting from './pages/NewWebRTCMeeting';
-import AllMeetings from './pages/AllMeetings';
-import MeetingDetails from './pages/MeetingDetails';
-import JoinMeeting from './pages/JoinMeeting';
-import WebRTCMeeting from './pages/WebRTCMeeting';
+import NewDocument from './pages/NewDocument';
+import AllDocuments from './pages/AllDocuments';
+import DocumentDetails from './pages/DocumentDetails';
 import Auth from './components/Auth';
 import LoadingSpinner from './components/LoadingSpinner';
 import LandingPage from './pages/LandingPage';
@@ -19,16 +16,13 @@ const AppContent = () => {
   const [activeView, setActiveView] = useState(() => {
     return localStorage.getItem('activeView') || 'dashboard';
   });
-  const [selectedMeetingId, setSelectedMeetingId] = useState(() => {
-    return localStorage.getItem('selectedMeetingId') || null;
+  const [selectedDocumentId, setSelectedDocumentId] = useState(() => {
+    return localStorage.getItem('selectedDocumentId') || null;
   });
   const [activeTab, setActiveTab] = useState(() => {
-    return localStorage.getItem('activeTab') || 'transcript';
+    return localStorage.getItem('activeTab') || 'content';
   });
-  const [roomId, setRoomId] = useState(null);
-  const [meetingData, setMeetingData] = useState(null);
-  const [isHost, setIsHost] = useState(false);
-  const [showLanding, setShowLanding] = useState(true); 
+  const [showLanding, setShowLanding] = useState(true);
   const { user, loading, isAuthenticated } = useAuth();
 
   useEffect(() => {
@@ -42,12 +36,12 @@ const AppContent = () => {
   }, [activeView]);
 
   useEffect(() => {
-    if (selectedMeetingId) {
-      localStorage.setItem('selectedMeetingId', selectedMeetingId);
+    if (selectedDocumentId) {
+      localStorage.setItem('selectedDocumentId', selectedDocumentId);
     } else {
-      localStorage.removeItem('selectedMeetingId');
+      localStorage.removeItem('selectedDocumentId');
     }
-  }, [selectedMeetingId]);
+  }, [selectedDocumentId]);
 
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
@@ -64,51 +58,21 @@ const AppContent = () => {
     return <LandingPage onGetStarted={() => setShowLanding(false)} />;
   }
 
-  const handleMeetingClick = (meetingId, tab = 'transcript') => {
-    setSelectedMeetingId(meetingId);
+  const handleDocumentClick = (documentId, tab = 'content') => {
+    setSelectedDocumentId(documentId);
     setActiveTab(tab);
-    setActiveView('meeting-details');
+    setActiveView('document-details');
   };
 
-  const handleBackFromMeeting = () => {
-    setSelectedMeetingId(null);
-    setActiveView('meetings');
+  const handleBackFromDocument = () => {
+    setSelectedDocumentId(null);
+    setActiveView('documents');
   };
 
-  const handleMeetingCreated = (meetingId) => {
-    // When a recorded meeting is created, navigate to it
-    handleMeetingClick(meetingId, 'transcript');
-  };
-
-  const handleWebRTCMeetingCreated = (meeting, roomIdParam) => {
-    // When a WebRTC meeting is created, start the meeting
-    setMeetingData(meeting);
-    setRoomId(roomIdParam);
-    setIsHost(true);
-    setActiveView('webrtc-meeting');
-  };
-
-  const handleJoinRoom = (roomIdParam) => {
-    setRoomId(roomIdParam);
-    setActiveView('join-meeting');
-  };
-
-  const handleJoinMeeting = (meeting, isHostParam) => {
-    setMeetingData(meeting);
-    setIsHost(isHostParam);
-    setActiveView('webrtc-meeting');
-  };
-
-  const handleLeaveMeeting = () => {
-    setRoomId(null);
-    setMeetingData(null);
-    setIsHost(false);
-    setActiveView('dashboard');
-  };
-
-  const handleBackFromJoin = () => {
-    setRoomId(null);
-    setActiveView('dashboard');
+  const handleDocumentCreated = (document) => {
+    // When a document is created, navigate to it
+    const documentId = document.id || document._id;
+    handleDocumentClick(documentId, 'content');
   };
 
   const renderContent = () => {
@@ -117,53 +81,28 @@ const AppContent = () => {
         return (
           <Dashboard 
             onNavigate={setActiveView}
-            onMeetingClick={handleMeetingClick}
-            onJoinRoom={handleJoinRoom}
+            onDocumentClick={handleDocumentClick}
           />
         );
-      case 'new-meeting': 
+      case 'new-document': 
         return (
-          <NewMeeting 
-            onMeetingCreated={handleMeetingCreated}
+          <NewDocument 
+            onDocumentCreated={handleDocumentCreated}
             onNavigate={setActiveView}
           />
         );
-      case 'new-webrtc-meeting':
+      case 'documents': 
         return (
-          <NewWebRTCMeeting 
-            onMeetingCreated={handleWebRTCMeetingCreated}
-            onNavigate={setActiveView}
+          <AllDocuments 
+            onDocumentClick={handleDocumentClick}
           />
         );
-      case 'join-meeting':
+      case 'document-details': 
         return (
-          <JoinMeeting 
-            roomId={roomId}
-            onJoin={handleJoinMeeting}
-            onBack={handleBackFromJoin}
-          />
-        );
-      case 'webrtc-meeting':
-        return (
-          <WebRTCMeeting 
-            roomId={roomId}
-            onLeave={handleLeaveMeeting}
-            isHost={isHost}
-            meetingData={meetingData}
-          />
-        );
-      case 'meetings': 
-        return (
-          <AllMeetings 
-            onMeetingClick={handleMeetingClick}
-          />
-        );
-      case 'meeting-details': 
-        return (
-          <MeetingDetails 
-            meetingId={selectedMeetingId}
+          <DocumentDetails 
+            documentId={selectedDocumentId}
             activeTab={activeTab}
-            onBack={handleBackFromMeeting}
+            onBack={handleBackFromDocument}
             onTabChange={setActiveTab}
           />
         );
@@ -176,16 +115,12 @@ const AppContent = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       <Header />
       <div className="flex h-screen">
-        {!['webrtc-meeting', 'join-meeting'].includes(activeView) && (
-          <Sidebar 
-            activeView={activeView} 
-            setActiveView={setActiveView}
-            onMeetingClick={handleMeetingClick}
-          />
-        )}
-        <main className={`flex-1 overflow-y-auto ${
-          ['webrtc-meeting', 'join-meeting'].includes(activeView) ? '' : 'pt-20'
-        }`}>
+        <Sidebar 
+          activeView={activeView} 
+          setActiveView={setActiveView}
+          onDocumentClick={handleDocumentClick}
+        />
+        <main className="flex-1 overflow-y-auto pt-20">
           {renderContent()}
         </main>
       </div>

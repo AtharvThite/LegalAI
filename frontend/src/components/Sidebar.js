@@ -16,10 +16,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
+const Sidebar = ({ activeView, setActiveView, onDocumentClick }) => {
   const [expandedFolders, setExpandedFolders] = useState(new Set(['recent']));
   const [folders, setFolders] = useState([]);
-  const [meetings, setMeetings] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState('#3B82F6');
@@ -28,7 +28,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
   const [editFolderColor, setEditFolderColor] = useState('#3B82F6');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [showMoveDialog, setShowMoveDialog] = useState(null);
-  const [selectedMeetingToMove, setSelectedMeetingToMove] = useState(null);
+  const [selectedDocumentToMove, setSelectedDocumentToMove] = useState(null);
   const [loading, setLoading] = useState(true);
   const { makeAuthenticatedRequest } = useAuth();
 
@@ -49,17 +49,16 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'new-meeting', label: 'Record Meeting', icon: Mic },
-    { id: 'new-webrtc-meeting', label: 'Video Meeting', icon: Video },
-    { id: 'meetings', label: 'All Meetings', icon: FileText },
+    { id: 'new-document', label: 'Upload Document', icon: FileText },
+    { id: 'documents', label: 'All Documents', icon: FileText },
   ];
 
   const fetchFolders = async () => {
     try {
-      const response = await makeAuthenticatedRequest('/meetings/folders');
+      const response = await makeAuthenticatedRequest('/documents/folders');
       if (response.ok) {
         const data = await response.json();
-        setFolders(data);
+        setFolders(data.folders || []);
       }
     } catch (error) {
       console.error('Error fetching folders:', error);
@@ -68,9 +67,9 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
   // Add default folders definition
   const defaultFolders = [
-    { id: 'recent', name: 'Recent', color: '#3B82F6', meeting_count: 0 },
-    { id: 'work', name: 'Work', color: '#10B981', meeting_count: 0 },
-    { id: 'personal', name: 'Personal', color: '#F59E0B', meeting_count: 0 }
+    { id: 'recent', name: 'Recent', color: '#3B82F6', document_count: 0 },
+    { id: 'work', name: 'Work', color: '#10B981', document_count: 0 },
+    { id: 'personal', name: 'Personal', color: '#F59E0B', document_count: 0 }
   ];
 
   // Separate default and custom folders
@@ -80,16 +79,16 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
   const allFolders = [...defaultFolders, ...customFolders];
 
-  const fetchMeetings = async (folderId = null) => {
+  const fetchDocuments = async (folderId = null) => {
     try {
-      const url = folderId ? `/meetings?folder_id=${folderId}&limit=50` : '/meetings?limit=50';
+      const url = folderId ? `/documents?folder_id=${folderId}&limit=50` : '/documents?limit=50';
       const response = await makeAuthenticatedRequest(url);
       if (response.ok) {
         const data = await response.json();
-        setMeetings(data.meetings || []);
+        setDocuments(data.documents || []);
       }
     } catch (error) {
-      console.error('Error fetching meetings:', error);
+      console.error('Error fetching documents:', error);
     }
   };
 
@@ -97,7 +96,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     if (!newFolderName.trim()) return;
 
     try {
-      const response = await makeAuthenticatedRequest('/meetings/folders', {
+      const response = await makeAuthenticatedRequest('/documents/folders', {
         method: 'POST',
         body: JSON.stringify({
           name: newFolderName,
@@ -121,7 +120,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     if (!editFolderName.trim()) return;
 
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/folders/${folderId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/folders/${folderId}`, {
         method: 'PUT',
         body: JSON.stringify({
           name: editFolderName,
@@ -146,7 +145,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
   const deleteFolder = async (folderId) => {
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/folders/${folderId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/folders/${folderId}`, {
         method: 'DELETE'
       });
 
@@ -154,16 +153,16 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
         setFolders(folders.filter(f => f.id !== folderId));
         setShowDeleteConfirm(null);
         // Refresh meetings to show moved meetings in Recent
-        fetchMeetings();
+        fetchDocuments();
       }
     } catch (error) {
       console.error('Error deleting folder:', error);
     }
   };
 
-  const moveMeeting = async (meetingId, targetFolderId) => {
+  const moveDocument = async (documentId, targetFolderId) => {
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/${documentId}`, {
         method: 'PUT',
         body: JSON.stringify({
           folder_id: targetFolderId
@@ -172,41 +171,41 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
 
       if (response.ok) {
         // Update local state
-        setMeetings(meetings.map(m => 
-          (m.id === meetingId || m._id === meetingId)
-            ? { ...m, folder_id: targetFolderId }
-            : m
+        setDocuments(documents.map(d => 
+          (d.id === documentId || d._id === documentId)
+            ? { ...d, folder_id: targetFolderId }
+            : d
         ));
         setShowMoveDialog(false);
-        setSelectedMeetingToMove(null);
+        setSelectedDocumentToMove(null);
       }
     } catch (error) {
-      console.error('Error moving meeting:', error);
+      console.error('Error moving document:', error);
     }
   };
 
-  const getMeetingsForFolder = (folderId) => {
-    return meetings.filter(meeting => meeting.folder_id === folderId);
+  const getDocumentsForFolder = (folderId) => {
+    return documents.filter(document => document.folder_id === folderId);
   };
 
-  const getFolderMeetingCount = (folderId) => {
-    // For default folders, count meetings dynamically from the local meetings array
+  const getFolderDocumentCount = (folderId) => {
+    // For default folders, count documents dynamically from the local documents array
     if (['recent', 'work', 'personal'].includes(folderId)) {
-      return getMeetingsForFolder(folderId).length;
+      return getDocumentsForFolder(folderId).length;
     }
     
     // For custom folders, use the count from the API but fallback to local count if needed
     const folder = folders.find(f => f.id === folderId);
     const apiCount = folder?.meeting_count || 0;
-    const localCount = getMeetingsForFolder(folderId).length;
+    const localCount = getDocumentsForFolder(folderId).length;
     
     // Use the local count if it's different from API count (more accurate for current view)
     return localCount;
   };
 
-  const handleMoveClick = (e, meeting) => {
+  const handleMoveClick = (e, document) => {
     e.stopPropagation();
-    setSelectedMeetingToMove(meeting);
+    setSelectedDocumentToMove(document);
     setShowMoveDialog(true);
   };
 
@@ -244,12 +243,12 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
     );
   };
 
-  const renderMeetingActions = (meeting) => (
+  const renderDocumentActions = (document) => (
     <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
       <button
-        onClick={(e) => handleMoveClick(e, meeting)}
+        onClick={(e) => handleMoveClick(e, document)}
         className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-        title="Move meeting"
+        title="Move document"
       >
         <Move className="w-3 h-3" />
       </button>
@@ -289,15 +288,15 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
   useEffect(() => {
     const loadData = async () => {
       await fetchFolders();
-      await fetchMeetings();
+      await fetchDocuments();
       setLoading(false);
     };
     loadData();
   }, []);
 
   // Add this new function to handle meeting click with hover effect
-  const handleMeetingClick = (meetingId, tab = 'transcript') => {
-    onMeetingClick(meetingId, tab);
+  const handleDocumentClick = (documentId, tab = 'transcript') => {
+    onDocumentClick(documentId, tab);
   };
 
   if (loading) {
@@ -357,8 +356,8 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
             <div className="space-y-1">
               {allFolders.map((folder) => {
                 const isExpanded = expandedFolders.has(folder.id);
-                const folderMeetings = getMeetingsForFolder(folder.id);
-                const meetingCount = folderMeetings.length; // Use actual length instead of getFolderMeetingCount
+                const folderDocuments = getDocumentsForFolder(folder.id);
+                const documentCount = folderDocuments.length; // Use actual length instead of getFolderMeetingCount
 
                 return (
                   <div key={folder.id}>
@@ -421,47 +420,43 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
                             {folder.name}
                           </span>
                           <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto mr-2">
-                            {meetingCount}
+                            {documentCount}
                           </span>
                         </div>
                         {renderFolderActions(folder)}
                       </div>
                     )}
 
-                    {isExpanded && folderMeetings.length > 0 && (
+                    {isExpanded && folderDocuments.length > 0 && (
                       <div className="ml-6 mt-1 space-y-1">
-                        {folderMeetings.slice(0, 5).map((meeting) => (
+                        {folderDocuments.slice(0, 5).map((document) => (
                           <div
-                            key={meeting.id || meeting._id}
-                            onClick={() => handleMeetingClick(meeting.id || meeting._id)}
+                            key={document.id || document._id}
+                            onClick={() => onDocumentClick(document.id || document._id)}
                             className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer group"
                           >
                             <div className="flex items-center space-x-2 flex-1">
-                              {meeting.meeting_type === 'webrtc' ? (
-                                <Video className="w-3 h-3 text-green-500" />
-                              ) : (
-                                <Mic className="w-3 h-3 text-blue-500" />
-                              )}
+                              <FileText className="w-3 h-3 text-blue-500" />
                               <div className="flex-1">
                                 <p className="text-xs text-gray-700 dark:text-gray-300 font-medium truncate">
-                                  {meeting.title || 'Untitled Meeting'}
+                                  {document.title || 'Untitled Document'}
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                   <Clock className="inline w-3 h-3 mr-1" />
-                                  {formatDate(meeting.created_at)}
+                                  {formatDate(document.created_at)}
                                 </p>
                               </div>
                             </div>
-                            {renderMeetingActions(meeting)}
+                            {renderDocumentActions(document)}
                           </div>
                         ))}
-                        {folderMeetings.length > 5 && (
+                        {folderDocuments.length > 5 && (
                           <div className="p-2 text-center">
                             <button
                               onClick={() => setActiveView('meetings')}
                               className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                             >
-                              View {folderMeetings.length - 5} more...
+                              View {folderDocuments.length - 5} more...
                             </button>
                           </div>
                         )}
@@ -569,22 +564,22 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
         </div>
       )}
 
-      {/* Move Meeting Modal */}
-      {showMoveDialog && selectedMeetingToMove && (
+      {/* Move Document Modal */}
+      {showMoveDialog && selectedDocumentToMove && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Move Meeting
+              Move Document
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Move "{selectedMeetingToMove.title || 'Untitled Meeting'}" to:
+              Move "{selectedDocumentToMove.title || 'Untitled Document'}" to:
             </p>
             
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {allFolders.map((folder) => (
                 <button
                   key={folder.id}
-                  onClick={() => moveMeeting(selectedMeetingToMove.id || selectedMeetingToMove._id, folder.id)}
+                  onClick={() => moveDocument(selectedDocumentToMove.id || selectedDocumentToMove._id, folder.id)}
                   className="w-full flex items-center space-x-3 px-3 py-2 text-left rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <div 
@@ -600,7 +595,7 @@ const Sidebar = ({ activeView, setActiveView, onMeetingClick }) => {
               <button
                 onClick={() => {
                   setShowMoveDialog(false);
-                  setSelectedMeetingToMove(null);
+                  setSelectedDocumentToMove(null);
                 }}
                 className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
               >
