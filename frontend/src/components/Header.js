@@ -115,10 +115,10 @@ const Header = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                  Huddle
+                  LegalAI
                 </h1>
                 <span className="text-xs text-gray-500 dark:text-gray-400 hidden md:block">
-                  AI-Powered Meeting Intelligence
+                  AI-Powered Document Intelligence
                 </span>
               </div>
             </div>
@@ -142,7 +142,7 @@ const Header = () => {
                     <div className="flex items-start space-x-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg">
                       <div className="w-2 h-2 bg-blue-500 rounded-full mt-2" />
                       <div>
-                        <p className="text-sm text-gray-900 dark:text-white">Meeting transcript ready</p>
+                        <p className="text-sm text-gray-900 dark:text-white">Document analysis complete</p>
                         <p className="text-xs text-gray-500">2 minutes ago</p>
                       </div>
                     </div>

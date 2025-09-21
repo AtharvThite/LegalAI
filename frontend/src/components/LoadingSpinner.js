@@ -9,7 +9,7 @@ const LoadingSpinner = () => {
           <Brain className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent mb-2">
-          Huddle
+          LegalAI
         </h1>
         <div className="flex space-x-1 justify-center">
           <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />

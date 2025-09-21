@@ -19,11 +19,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import TranscriptViewer from '../components/TranscriptViewer';
 import KnowledgeGraph from '../components/KnowledgeGraph';
-import MeetingChatbot from '../components/MeetingChatbot';
+import DocumentChatbot from '../components/DocumentChatbot';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 
-const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
-  const [meeting, setMeeting] = useState(null);
+const DocumentDetails = ({ documentId, activeTab, onBack, onTabChange }) => {
+  const [document, setDocument] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -39,7 +39,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
   const { makeAuthenticatedRequest, downloadFile } = useAuth();
 
   const tabs = [
-    { id: 'transcript', label: 'Transcript', icon: FileText },
+    { id: 'content', label: 'Content', icon: FileText },
     { id: 'summary', label: 'Summary', icon: FileText },
     { id: 'knowledge-graph', label: 'Knowledge Graph', icon: Brain },
     { id: 'chat', label: 'AI Chat', icon: MessageSquare },
@@ -47,25 +47,25 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
   ];
 
   useEffect(() => {
-    fetchMeetingDetails();
+    fetchDocumentDetails();
     fetchFolders();
-  }, [meetingId]);
+  }, [documentId]);
 
-  const fetchMeetingDetails = async () => {
+  const fetchDocumentDetails = async () => {
     try {
       setLoading(true);
-      const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`);
+      const response = await makeAuthenticatedRequest(`/documents/${documentId}`);
       const data = await response.json();
       
       if (response.ok) {
-        setMeeting(data);
+        setDocument(data);
         setEditForm({
           title: data.title || '',
           description: data.description || '',
           folder_id: data.folder_id || 'recent'
         });
       } else {
-        setError(data.error || 'Failed to fetch meeting details');
+        setError(data.error || 'Failed to fetch document details');
       }
     } catch (err) {
       setError('Network error occurred');
@@ -76,10 +76,10 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
 
   const fetchFolders = async () => {
     try {
-      const response = await makeAuthenticatedRequest('/meetings/folders');
+      const response = await makeAuthenticatedRequest('/documents/folders');
       if (response.ok) {
         const data = await response.json();
-        setFolders(data);
+        setFolders(data.folders || []);
       }
     } catch (error) {
       console.error('Error fetching folders:', error);
@@ -88,23 +88,23 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
 
   const handleSaveEdit = async () => {
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/${documentId}`, {
         method: 'PUT',
         body: JSON.stringify(editForm)
       });
 
       if (response.ok) {
-        setMeeting(prev => ({ ...prev, ...editForm }));
+        setDocument(prev => ({ ...prev, ...editForm }));
         setEditing(false);
       }
     } catch (error) {
-      console.error('Error updating meeting:', error);
+      console.error('Error updating document:', error);
     }
   };
 
   const handleShare = async () => {
     try {
-      const shareUrl = `${window.location.origin}/meeting/${meetingId}`;
+      const shareUrl = `${window.location.origin}/document/${documentId}`;
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -114,26 +114,26 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
   };
 
   const handleMoveClick = () => {
-    setSelectedTargetFolder(meeting.folder_id || 'recent');
+    setSelectedTargetFolder(document.folder_id || 'recent');
     setShowMoveDialog(true);
   };
 
-  const handleMoveMeeting = async () => {
+  const handleMoveDocument = async () => {
     if (!selectedTargetFolder) return;
 
     setIsMoving(true);
     try {
-      const response = await makeAuthenticatedRequest(`/meetings/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/documents/${documentId}`, {
         method: 'PUT',
         body: JSON.stringify({ folder_id: selectedTargetFolder })
       });
 
       if (response.ok) {
-        setMeeting(prev => ({ ...prev, folder_id: selectedTargetFolder }));
+        setDocument(prev => ({ ...prev, folder_id: selectedTargetFolder }));
         setShowMoveDialog(false);
       }
     } catch (error) {
-      console.error('Error moving meeting:', error);
+      console.error('Error moving document:', error);
     } finally {
       setIsMoving(false);
     }
@@ -177,44 +177,15 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
     }
   };
 
-  // Update the formatDuration function
-  const formatDuration = () => {
-    if (!meeting) return 'N/A';
+  // Update the formatFileInfo function
+  const formatFileInfo = () => {
+    if (!document) return 'N/A';
     
-    const createdAt = parseDateTime(meeting.created_at);
-    const endedAt = parseDateTime(meeting.ended_at);
+    const content = document.content || '';
+    const wordCount = content.split(/\s+/).filter(word => word.length > 0).length;
+    const charCount = content.length;
     
-    if (!createdAt) {
-      console.warn('No valid created_at date found:', meeting.created_at);
-      return 'N/A';
-    }
-    
-    let endTime;
-    if (endedAt) {
-      endTime = endedAt;
-    } else if (meeting.status === 'completed') {
-      // If meeting is completed but no end time, estimate based on typical meeting length
-      endTime = new Date(createdAt.getTime() + (60 * 60 * 1000)); // Add 1 hour as default
-    } else {
-      return 'Ongoing';
-    }
-    
-    const durationMs = endTime.getTime() - createdAt.getTime();
-    
-    if (durationMs <= 0) {
-      console.warn('Invalid duration calculated:', { createdAt, endTime, durationMs });
-      return 'N/A';
-    }
-    
-    const totalMinutes = Math.floor(durationMs / (1000 * 60));
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else {
-      return `${minutes}m`;
-    }
+    return `${wordCount} words, ${charCount} characters`;
   };
 
   const getStatusColor = (status) => {
@@ -228,7 +199,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
 
   const downloadReport = async (format) => {
     try {
-      await downloadFile(`/report/${meetingId}/${format}`, `meeting_${meetingId}.${format}`);
+      await downloadFile(`/report/${documentId}/${format}`, `document_${documentId}.${format}`);
     } catch (error) {
       console.error('Error downloading report:', error);
     }
@@ -244,7 +215,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
       <div className="p-6 space-y-6 animate-fade-in">
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
           <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading meeting details...</p>
+          <p className="text-gray-600 dark:text-gray-400">Loading document details...</p>
         </div>
       </div>
     );
@@ -257,7 +228,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
           <div className="w-16 h-16 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center mx-auto mb-4">
             <X className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Error Loading Meeting</h3>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Error Loading Document</h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
           <button
             onClick={onBack}
@@ -270,15 +241,15 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
     );
   }
 
-  if (!meeting) {
+  if (!document) {
     return (
       <div className="p-6 space-y-6 animate-fade-in">
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-12 text-center">
           <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
             <FileText className="w-8 h-8 text-gray-400" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Meeting Not Found</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">The requested meeting could not be found.</p>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Document Not Found</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">The requested document could not be found.</p>
           <button
             onClick={onBack}
             className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
@@ -300,7 +271,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
             className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>Back to Meetings</span>
+            <span>Back to Documents</span>
           </button>
 
           <div className="flex items-center space-x-3">
@@ -392,7 +363,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 onChange={(e) => setEditForm({ ...editForm, folder_id: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                {folders.map(folder => (
+                {Array.isArray(folders) && folders.map(folder => (
                   <option key={folder.id} value={folder.id}>
                     {folder.name}
                   </option>
@@ -419,7 +390,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
         ) : (
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-              {meeting.title || 'Untitled Meeting'}
+              {document.title || 'Untitled Document'}
             </h1>
             
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
@@ -428,7 +399,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Date</p>
                   <p className="font-medium text-gray-900 dark:text-white">
-                    {formatDate(meeting.created_at)}
+                    {formatDate(document.created_at)}
                   </p>
                 </div>
               </div>
@@ -437,16 +408,16 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 <Clock className="w-5 h-5 text-gray-400" />
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Duration</p>
-                  <p className="font-medium text-gray-900 dark:text-white">{formatDuration()}</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{formatFileInfo()}</p>
                 </div>
               </div>
 
               <div className="flex items-center space-x-3">
-                <Users className="w-5 h-5 text-gray-400" />
+                <FileText className="w-5 h-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Participants</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">File Type</p>
                   <p className="font-medium text-gray-900 dark:text-white">
-                    {meeting.participants?.length || 0}
+                    {document.file_type || 'text'}
                   </p>
                 </div>
               </div>
@@ -456,24 +427,24 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Folder</p>
                   <p className="font-medium text-gray-900 dark:text-white">
-                    {getFolderName(meeting.folder_id)}
+                    {getFolderName(document.folder_id)}
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(meeting.status)}`}>
-                {meeting.status}
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(document.status)}`}>
+                {document.status}
               </span>
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                Language: {meeting.language || 'en-US'}
+                Language: {document.language || 'en-US'}
               </span>
             </div>
 
-            {meeting.description && (
+            {document.description && (
               <div className="mt-4">
-                <p className="text-gray-700 dark:text-gray-300">{meeting.description}</p>
+                <p className="text-gray-700 dark:text-gray-300">{document.description}</p>
               </div>
             )}
           </div>
@@ -503,24 +474,24 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
 
         {/* Tab Content */}
         <div className="p-6">
-          {activeTab === 'transcript' && (
-            <TranscriptViewer transcript={meeting.transcript} meetingId={meetingId} />
+          {activeTab === 'content' && (
+            <TranscriptViewer transcript={document.content} documentId={documentId} />
           )}
           
           {activeTab === 'summary' && (
-            <SummaryView summary={meeting.summary} meetingId={meetingId} />
+            <SummaryView summary={document.summary} documentId={documentId} />
           )}
           
           {activeTab === 'knowledge-graph' && (
-            <KnowledgeGraphView meeting={meeting} meetingId={meetingId} />
+            <KnowledgeGraphView document={document} documentId={documentId} />
           )}
           
           {activeTab === 'chat' && (
-            <MeetingChatbot meetingId={meetingId} />
+            <DocumentChatbot documentId={documentId} />
           )}
           
           {activeTab === 'insights' && (
-            <InsightsView meeting={meeting} />
+            <InsightsView document={document} />
           )}
         </div>
       </div>
@@ -530,7 +501,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Move Meeting
+              Move Document
             </h3>
             
             <div className="mb-6">
@@ -542,7 +513,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 onChange={(e) => setSelectedTargetFolder(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                {folders.map(folder => (
+                {Array.isArray(folders) && folders.map(folder => (
                   <option key={folder.id} value={folder.id}>
                     {folder.name}
                   </option>
@@ -558,7 +529,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
                 Cancel
               </button>
               <button
-                onClick={handleMoveMeeting}
+                onClick={handleMoveDocument}
                 disabled={isMoving}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50"
               >
@@ -573,7 +544,7 @@ const MeetingDetails = ({ meetingId, activeTab, onBack, onTabChange }) => {
 };
 
 // Updated Summary Component with better styling
-const SummaryView = ({ summary, meetingId }) => {
+const SummaryView = ({ summary, documentId }) => {
   const { makeAuthenticatedRequest } = useAuth();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedSummary, setGeneratedSummary] = useState(summary);
@@ -584,9 +555,9 @@ const SummaryView = ({ summary, meetingId }) => {
     setError('');
     
     try {
-      console.log('Generating summary for meeting:', meetingId);
+      console.log('Generating summary for document:', documentId);
       
-      const response = await makeAuthenticatedRequest(`/summary/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/summary/${documentId}`, {
         method: 'POST',
         body: JSON.stringify({})
       });
@@ -615,7 +586,7 @@ const SummaryView = ({ summary, meetingId }) => {
           No Summary Available
         </h3>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
-          Generate an AI-powered summary of this meeting's key points and decisions.
+          Generate an AI-powered summary of this document's key points and insights.
         </p>
         <button
           onClick={generateSummary}
@@ -635,7 +606,7 @@ const SummaryView = ({ summary, meetingId }) => {
           Generating Summary...
         </h3>
         <p className="text-gray-600 dark:text-gray-400">
-          AI is analyzing the meeting transcript and creating a comprehensive summary.
+          AI is analyzing the document content and creating a comprehensive summary.
         </p>
       </div>
     );
@@ -668,7 +639,7 @@ const SummaryView = ({ summary, meetingId }) => {
       <div className="p-6 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Meeting Summary
+            Document Summary
           </h3>
           <button
             onClick={generateSummary}
@@ -695,30 +666,30 @@ const SummaryView = ({ summary, meetingId }) => {
 };
 
 // Insights Component  
-const InsightsView = ({ meeting }) => {
+const InsightsView = ({ document }) => {
   const insights = [
     {
-      title: 'Meeting Duration',
-      value: '45 minutes',
-      description: 'Efficient meeting length',
+      title: 'Word Count',
+      value: `${document.content?.split(' ').length || 0} words`,
+      description: 'Total words in document',
       color: 'green'
     },
     {
-      title: 'Speaker Distribution',
-      value: '3 active speakers',
-      description: 'Good participation balance',
+      title: 'Content Sections',
+      value: `${document.knowledge_graph?.topics?.length || 0} topics`,
+      description: 'Main areas covered',
       color: 'blue'
     },
     {
-      title: 'Action Items',
-      value: `${meeting.knowledge_graph?.action_items?.length || 0} items`,
-      description: 'Clear next steps defined',
+      title: 'Key Findings',
+      value: `${document.knowledge_graph?.nodes?.filter(node => node.type === 'finding').length || 0} findings`,
+      description: 'Important conclusions identified',
       color: 'purple'
     },
     {
-      title: 'Topics Covered',
-      value: `${meeting.knowledge_graph?.topics?.length || 0} topics`,
-      description: 'Comprehensive discussion',
+      title: 'Entities Mentioned',
+      value: `${document.knowledge_graph?.nodes?.length || 0} entities`,
+      description: 'People, projects, and concepts',
       color: 'orange'
     }
   ];
@@ -742,13 +713,13 @@ const InsightsView = ({ meeting }) => {
       </div>
 
       {/* Action Items */}
-      {meeting.knowledge_graph?.action_items && meeting.knowledge_graph.action_items.length > 0 && (
+      {document.knowledge_graph?.action_items && document.knowledge_graph.action_items.length > 0 && (
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Action Items
           </h3>
           <div className="space-y-3">
-            {meeting.knowledge_graph.action_items.map((item, index) => (
+            {document.knowledge_graph.action_items.map((item, index) => (
               <div key={index} className="flex items-start space-x-3 p-3 bg-white dark:bg-gray-600 rounded-lg">
                 <div className="flex-shrink-0 w-6 h-6 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
                   <span className="text-xs font-medium text-blue-600 dark:text-blue-300">
@@ -779,7 +750,7 @@ const InsightsView = ({ meeting }) => {
   );
 };
 
-export default MeetingDetails;
+export default DocumentDetails;
 
 // Also add a helper function for formatting dates
 const formatDate = (dateValue) => {
@@ -814,7 +785,7 @@ const formatDate = (dateValue) => {
 };
 
 // Add this component for the Knowledge Graph tab
-const KnowledgeGraphView = ({ meeting, meetingId }) => {
+const KnowledgeGraphView = ({ document, documentId }) => {
   const [graphData, setGraphData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -824,7 +795,7 @@ const KnowledgeGraphView = ({ meeting, meetingId }) => {
     try {
       setLoading(true);
       setError('');
-      const response = await makeAuthenticatedRequest(`/knowledge-graph/${meetingId}`);
+      const response = await makeAuthenticatedRequest(`/knowledge-graph/${documentId}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -847,10 +818,10 @@ const KnowledgeGraphView = ({ meeting, meetingId }) => {
       setLoading(true);
       setError('');
       
-      const response = await makeAuthenticatedRequest(`/knowledge-graph/${meetingId}`, {
+      const response = await makeAuthenticatedRequest(`/knowledge-graph/${documentId}`, {
         method: 'POST',
         body: JSON.stringify({
-          transcript: meeting.transcript
+          transcript: document.transcript
         })
       });
       
@@ -868,10 +839,10 @@ const KnowledgeGraphView = ({ meeting, meetingId }) => {
   };
 
   useEffect(() => {
-    if (meetingId && meeting) {
+    if (documentId && document) {
       fetchKnowledgeGraph();
     }
-  }, [meetingId, meeting]);
+  }, [documentId, document]);
 
   if (loading) {
     return (
@@ -916,17 +887,17 @@ const KnowledgeGraphView = ({ meeting, meetingId }) => {
 // Update the renderContent function to include the new component:
 const renderContent = () => {
   switch (activeTab) {
-    case 'transcript':
-      return <TranscriptViewer transcript={meeting.transcript} meetingId={meetingId} />;
+    case 'content':
+      return <TranscriptViewer transcript={document.content} documentId={documentId} />;
     case 'summary':
-      return <SummaryView summary={meeting.summary} meetingId={meetingId} />;
+      return <SummaryView summary={document.summary} documentId={documentId} />;
     case 'knowledge-graph':
-      return <KnowledgeGraphView meeting={meeting} meetingId={meetingId} />;
+      return <KnowledgeGraphView document={document} documentId={documentId} />;
     case 'chat':
-      return <MeetingChatbot meetingId={meetingId} />;
+      return <DocumentChatbot documentId={documentId} />;
     case 'insights':
-      return <InsightsView meeting={meeting} />;
+      return <InsightsView document={document} />;
     default:
-      return <TranscriptViewer transcript={meeting.transcript} meetingId={meetingId} />;
+      return <TranscriptViewer transcript={document.content} documentId={documentId} />;
   }
 };

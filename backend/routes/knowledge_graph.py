@@ -15,26 +15,26 @@ def is_valid_objectid(id_string):
     except (InvalidId, TypeError):
         return False
 
-@knowledge_graph_bp.route('/<meeting_id>', methods=['POST'])
+@knowledge_graph_bp.route('/<document_id>', methods=['POST'])
 @jwt_required()
-def generate_graph(meeting_id):
+def generate_graph(document_id):
     user_id = get_jwt_identity()
     db = current_app.mongo.db
     
-    print(f"[DEBUG] Generating knowledge graph for meeting_id: {meeting_id}")
+    print(f"[DEBUG] Generating knowledge graph for document_id: {document_id}")
     
-    # Verify meeting ownership
-    if is_valid_objectid(meeting_id):
+    # Verify document ownership
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    meeting = db.meetings.find_one(query)
-    if not meeting:
-        return jsonify({'error': 'Meeting not found'}), 404
+    document = db.documents.find_one(query)
+    if not document:
+        return jsonify({'error': 'Document not found'}), 404
     
     # Get transcript from request or database
     transcript = request.json.get('transcript') if request.json else None
@@ -42,14 +42,14 @@ def generate_graph(meeting_id):
     if not transcript:
         # Try to find transcript in database
         search_ids = [
-            meeting.get('id', str(meeting['_id'])),
-            str(meeting['_id']),
-            meeting_id
+            document.get('id', str(document['_id'])),
+            str(document['_id']),
+            document_id
         ]
         
         doc = None
         for search_id in search_ids:
-            doc = db.transcriptions.find_one({'meeting_id': search_id})
+            doc = db.transcriptions.find_one({'document_id': search_id})
             if doc:
                 break
         
@@ -66,13 +66,13 @@ def generate_graph(meeting_id):
         graph = generate_knowledge_graph(transcript)
         
         # Use consistent ID for storage
-        storage_id = meeting.get('id', meeting_id)
+        storage_id = document.get('id', document_id)
         
         # Store knowledge graph
         db.knowledge_graphs.update_one(
-            {'meeting_id': storage_id},
+            {'document_id': storage_id},
             {'$set': {
-                'meeting_id': storage_id,
+                'document_id': storage_id,
                 'graph': graph,
                 'created_at': datetime.utcnow()
             }},
@@ -88,36 +88,36 @@ def generate_graph(meeting_id):
         traceback.print_exc()
         return jsonify({'error': f'Failed to generate knowledge graph: {str(e)}'}), 500
 
-@knowledge_graph_bp.route('/<meeting_id>', methods=['GET'])
+@knowledge_graph_bp.route('/<document_id>', methods=['GET'])
 @jwt_required()
-def get_graph(meeting_id):
+def get_graph(document_id):
     user_id = get_jwt_identity()
     db = current_app.mongo.db
     
-    # Verify meeting ownership
-    if is_valid_objectid(meeting_id):
+    # Verify document ownership
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    meeting = db.meetings.find_one(query)
-    if not meeting:
-        return jsonify({'error': 'Meeting not found'}), 404
+    document = db.documents.find_one(query)
+    if not document:
+        return jsonify({'error': 'Document not found'}), 404
     
     # Try multiple ways to find the knowledge graph
-    search_id = meeting.get('id', str(meeting['_id']))
+    search_id = document.get('id', str(document['_id']))
     
-    doc = db.knowledge_graphs.find_one({'meeting_id': search_id})
+    doc = db.knowledge_graphs.find_one({'document_id': search_id})
     
     # If not found, try with other IDs
-    if not doc and is_valid_objectid(meeting_id):
-        doc = db.knowledge_graphs.find_one({'meeting_id': str(meeting['_id'])})
+    if not doc and is_valid_objectid(document_id):
+        doc = db.knowledge_graphs.find_one({'document_id': str(document['_id'])})
     
     if not doc:
-        doc = db.knowledge_graphs.find_one({'meeting_id': meeting_id})
+        doc = db.knowledge_graphs.find_one({'document_id': document_id})
     
     if doc:
         doc['_id'] = str(doc['_id'])

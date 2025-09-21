@@ -25,38 +25,38 @@ const LandingPage = ({ onGetStarted }) => {
   const features = [
     {
       icon: FileText,
-      title: 'Smart Transcripts',
-      description: 'AI-powered transcription with speaker identification and accurate speech segmentation for crystal-clear meeting records.',
+      title: 'Smart Document Analysis',
+      description: 'AI-powered analysis of PDFs, DOCX, and TXT files with automatic text extraction and intelligent content parsing.',
       color: 'blue'
     },
     {
       icon: Brain,
-      title: 'AI Summary',
-      description: 'Automatically generate comprehensive summaries highlighting key decisions, action items, and important discussion points.',
+      title: 'AI Document Summaries',
+      description: 'Automatically generate comprehensive summaries highlighting key findings, main topics, and important conclusions from your documents.',
       color: 'purple'
     },
     {
       icon: BarChart3,
-      title: 'Knowledge Graph',
-      description: 'Visualize meeting relationships, topics, and connections with interactive knowledge graphs for better insights.',
+      title: 'Knowledge Graph Generation',
+      description: 'Visualize document relationships, entities, and connections with interactive knowledge graphs for better understanding.',
       color: 'green'
     },
     {
       icon: MessageSquare,
-      title: 'AI Chat Assistant',
-      description: 'Ask questions about your meetings and get instant answers from our intelligent chatbot trained on your content.',
+      title: 'Document Chat Assistant',
+      description: 'Ask questions about your documents and get instant answers from our intelligent chatbot trained on your content.',
       color: 'orange'
     },
     {
       icon: BarChart3,
-      title: 'Deep Insights',
-      description: 'Analyze meeting patterns, participation levels, and trends to improve team collaboration and productivity.',
+      title: 'Document Insights',
+      description: 'Analyze document patterns, content structure, and key metrics to extract valuable insights and recommendations.',
       color: 'pink'
     },
     {
       icon: Download,
-      title: 'Export Anywhere',
-      description: 'Export your meeting data in multiple formats including PDF, JSON, CSV, and TXT for seamless integration.',
+      title: 'Multi-Format Export',
+      description: 'Export your document analysis in multiple formats including PDF reports, JSON data, CSV exports, and structured summaries.',
       color: 'indigo'
     }
   ];
@@ -64,23 +64,23 @@ const LandingPage = ({ onGetStarted }) => {
   const testimonials = [
     {
       name: 'Sarah Chen',
-      role: 'Product Manager at TechCorp',
+      role: 'Legal Counsel at TechCorp',
       avatar: '👩‍💼',
-      quote: 'Huddle has transformed how we handle meetings. The AI summaries save us hours every week, and the speaker identification is incredibly accurate.',
+      quote: 'LegalAI has revolutionized how we analyze legal documents. The AI summaries save us hours of reading time, and the accuracy is incredible.',
       rating: 5
     },
     {
       name: 'Michael Rodriguez',
-      role: 'CEO at StartupXYZ',
+      role: 'Research Director at InnovateLabs',
       avatar: '👨‍💼',
-      quote: 'The knowledge graph feature is a game-changer. We can now see connections between meetings and topics that we never noticed before.',
+      quote: 'The knowledge graph feature helps us understand complex research papers and their relationships. We can now see connections we never noticed before.',
       rating: 5
     },
     {
       name: 'Emily Johnson',
-      role: 'Team Lead at InnovateCo',
+      role: 'Content Manager at GlobalTech',
       avatar: '👩‍🔬',
-      quote: 'The AI chat feature lets us quickly find information from past meetings. It\'s like having a personal assistant for all our meeting data.',
+      quote: 'The document chat feature lets us quickly find information from lengthy reports and contracts. It\'s like having a personal assistant for all our documents.',
       rating: 5
     }
   ];
@@ -90,11 +90,11 @@ const LandingPage = ({ onGetStarted }) => {
       name: 'Starter',
       price: '$9',
       period: '/month',
-      description: 'Perfect for small teams getting started',
+      description: 'Perfect for individual researchers and small teams',
       features: [
-        'Up to 10 hours of transcription',
+        'Up to 50 documents per month',
         'Basic AI summaries',
-        'Speaker identification',
+        'Text extraction from PDFs',
         'Export to PDF & TXT',
         'Email support'
       ],
@@ -107,10 +107,10 @@ const LandingPage = ({ onGetStarted }) => {
       period: '/month',
       description: 'Ideal for growing teams and businesses',
       features: [
-        'Up to 50 hours of transcription',
+        'Up to 500 documents per month',
         'Advanced AI summaries',
         'Knowledge graphs',
-        'AI chat assistant',
+        'Document chat assistant',
         'All export formats',
         'Priority support',
         'Team collaboration'
@@ -122,9 +122,9 @@ const LandingPage = ({ onGetStarted }) => {
       name: 'Enterprise',
       price: '$99',
       period: '/month',
-      description: 'For large organizations with advanced needs',
+      description: 'For large organizations with extensive document needs',
       features: [
-        'Unlimited transcription',
+        'Unlimited documents',
         'Custom AI models',
         'Advanced analytics',
         'API access',
@@ -138,10 +138,10 @@ const LandingPage = ({ onGetStarted }) => {
   ];
 
   const stats = [
-    { label: 'Hours Transcribed', value: '50K+', icon: Clock },
+    { label: 'Documents Processed', value: '100K+', icon: FileText },
     { label: 'Happy Customers', value: '2K+', icon: Users },
-    { label: 'Languages Supported', value: '25+', icon: Globe },
-    { label: 'Accuracy Rate', value: '99%', icon: Award }
+    { label: 'File Types Supported', value: 'PDF, DOCX, TXT', icon: Globe },
+    { label: 'Analysis Accuracy', value: '99%', icon: Award }
   ];
 
   return (
@@ -157,7 +157,7 @@ const LandingPage = ({ onGetStarted }) => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                  Huddle
+                  LegalAI
                 </h1>
               </div>
             </div>
@@ -221,14 +221,14 @@ const LandingPage = ({ onGetStarted }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center">
             <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
-              Transform Your Meetings with{' '}
+              Transform Your Documents with{' '}
               <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
                 AI-Powered Intelligence
               </span>
             </h1>
             <p className="text-xl text-gray-600 dark:text-gray-300 mb-8 max-w-3xl mx-auto">
-              Huddle uses advanced AI to transcribe meetings with perfect speaker identification, 
-              generate intelligent summaries, and unlock insights from your conversations.
+              LegalAI uses advanced AI to analyze documents with perfect text extraction, 
+              generate intelligent summaries, and unlock insights from your content.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
@@ -270,10 +270,10 @@ const LandingPage = ({ onGetStarted }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-              Powerful Features for Modern Teams
+              Powerful Features for Document Intelligence
             </h2>
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Everything you need to make your meetings more productive and actionable
+              Everything you need to understand and analyze your documents more effectively
             </p>
           </div>
 
@@ -303,10 +303,10 @@ const LandingPage = ({ onGetStarted }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-              Loved by Teams Worldwide
+              Trusted by Professionals Worldwide
             </h2>
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              See what our customers are saying about Huddle
+              See what our customers are saying about LegalAI
             </p>
           </div>
 
@@ -421,10 +421,10 @@ const LandingPage = ({ onGetStarted }) => {
       <section className="py-20 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            Ready to Transform Your Meetings?
+            Ready To Actually Comprehend Those Massive Walls Of Text?
           </h2>
           <p className="text-xl text-blue-100 mb-8">
-            Join thousands of teams already using Huddle to make their meetings more productive
+            Join thousands of users already using LegalAI to make their documents more manageable and understandable.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
@@ -452,12 +452,12 @@ const LandingPage = ({ onGetStarted }) => {
                   <Brain className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent">
-                  Huddle
+                  LegalAI
                 </h3>
               </div>
               <p className="text-gray-400 mb-6 max-w-md">
-                AI-powered meeting intelligence that transforms how teams collaborate, 
-                with smart transcription, summaries, and insights.
+                AI-powered document intelligence that helps demystify complex texts, 
+                with smart summaries, knowledge graph generations, and actionable insights.
               </p>
               <div className="flex space-x-4">
                 <a href="#" className="text-gray-400 hover:text-white transition-colors">
@@ -503,7 +503,7 @@ const LandingPage = ({ onGetStarted }) => {
 
           <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between">
             <p className="text-gray-400 text-sm">
-              © 2025 Huddle. All rights reserved.
+              © 2025 LegalAI. All rights reserved.
             </p>
             <div className="flex space-x-6 mt-4 md:mt-0">
               <a href="#" className="text-gray-400 hover:text-white transition-colors text-sm">

@@ -17,35 +17,35 @@ def is_valid_objectid(id_string):
     except (InvalidId, TypeError):
         return False
 
-@transcription_bp.route('/<meeting_id>', methods=['POST'])
+@transcription_bp.route('/<document_id>', methods=['POST'])
 @jwt_required()
-def save_transcription(meeting_id):
+def save_transcription(document_id):
     user_id = get_jwt_identity()
     db = get_mongo()
     data = request.json
     
-    print(f"[DEBUG] Saving transcription for meeting_id: {meeting_id}")
+    print(f"[DEBUG] Saving transcription for document_id: {document_id}")
     
-    # Verify meeting ownership first
-    if is_valid_objectid(meeting_id):
+    # Verify document ownership first
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    meeting = db.meetings.find_one(query)
-    if not meeting:
-        print(f"[DEBUG] Meeting not found for transcription save")
-        return jsonify({'error': 'Meeting not found'}), 404
+    document = db.documents.find_one(query)
+    if not document:
+        print(f"[DEBUG] Document not found for transcription save")
+        return jsonify({'error': 'Document not found'}), 404
     
-    # Use the meeting's custom ID if available, otherwise use the meeting_id parameter
-    storage_id = meeting.get('id', meeting_id)
-    print(f"[DEBUG] Storing transcription with meeting_id: {storage_id}")
+    # Use the document's custom ID if available, otherwise use the document_id parameter
+    storage_id = document.get('id', document_id)
+    print(f"[DEBUG] Storing transcription with document_id: {storage_id}")
     
     transcription_data = {
-        'meeting_id': storage_id,  # Use consistent ID
+        'document_id': storage_id,  # Use consistent ID
         'transcript': data.get('transcript'),
         'speakers': data.get('speakers'),
         'language': data.get('language'),
@@ -55,7 +55,7 @@ def save_transcription(meeting_id):
     
     # Update existing or insert new
     result = db.transcriptions.update_one(
-        {'meeting_id': storage_id},
+        {'document_id': storage_id},
         {'$set': transcription_data},
         upsert=True
     )
@@ -64,39 +64,42 @@ def save_transcription(meeting_id):
     
     return jsonify({'status': 'saved'}), 201
 
-@transcription_bp.route('/<meeting_id>', methods=['GET'])
+@transcription_bp.route('/<document_id>', methods=['GET'])
 @jwt_required()
-def get_transcription(meeting_id):
+def get_transcription(document_id):
     user_id = get_jwt_identity()
     db = get_mongo()
     
-    # Verify meeting ownership first
-    if is_valid_objectid(meeting_id):
+    # Verify document ownership first
+    if is_valid_objectid(document_id):
         query = {
-            '$or': [{'id': meeting_id}, {'_id': ObjectId(meeting_id)}],
+            '$or': [{'id': document_id}, {'_id': ObjectId(document_id)}],
             'user_id': user_id
         }
     else:
-        query = {'id': meeting_id, 'user_id': user_id}
+        query = {'id': document_id, 'user_id': user_id}
     
-    meeting = db.meetings.find_one(query)
-    if not meeting:
-        return jsonify({'error': 'Meeting not found'}), 404
+    document = db.documents.find_one(query)
+    if not document:
+        return jsonify({'error': 'Document not found'}), 404
     
     # Try multiple ways to find the transcript
     search_ids = [
-        meeting.get('id', str(meeting['_id'])),
-        str(meeting['_id']),
-        meeting_id
+        document.get('id', str(document['_id'])),
+        str(document['_id']),
+        document_id
     ]
     
     doc = None
     for search_id in search_ids:
-        doc = db.transcriptions.find_one({'meeting_id': search_id})
+        doc = db.transcriptions.find_one({'document_id': search_id})
         if doc:
             break
     
     if doc:
         doc['_id'] = str(doc['_id'])
         return jsonify(doc)
-    return jsonify({'error': 'Not found'}), 404
+    
+    # If transcription not found, return the document data as a fallback
+    document['_id'] = str(document['_id'])
+    return jsonify(document)

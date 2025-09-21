@@ -35,8 +35,8 @@ def chunk_transcript(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     )
     return splitter.split_text(text)
 
-def create_vector_store(meeting_id: str, transcript: str):
-    """Create vector store for meeting transcript"""
+def create_vector_store(document_id: str, transcript: str):
+    """Create vector store for document content"""
     try:
         chunks = chunk_transcript(transcript)
         
@@ -47,25 +47,25 @@ def create_vector_store(meeting_id: str, transcript: str):
         vector_store = FAISS.from_texts(
             chunks,
             embeddings,
-            metadatas=[{"meeting_id": meeting_id, "chunk_id": i} for i in range(len(chunks))]
+            metadatas=[{"document_id": document_id, "chunk_id": i} for i in range(len(chunks))]
         )
         
         # Save vector store
-        vector_store.save_local(f"vector_stores/{meeting_id}")
-        print(f"[AI] Vector store created and saved for meeting {meeting_id}")
+        vector_store.save_local(f"vector_stores/{document_id}")
+        print(f"[AI] Vector store created and saved for document {document_id}")
         return vector_store
     except Exception as e:
         print(f"[AI] Error creating vector store: {e}")
         raise e
 
-def load_vector_store(meeting_id: str):
+def load_vector_store(document_id: str):
     """Load existing vector store"""
     try:
-        vector_store = FAISS.load_local(f"vector_stores/{meeting_id}", embeddings, allow_dangerous_deserialization=True)
-        print(f"[AI] Vector store loaded for meeting {meeting_id}")
+        vector_store = FAISS.load_local(f"vector_stores/{document_id}", embeddings, allow_dangerous_deserialization=True)
+        print(f"[AI] Vector store loaded for document {document_id}")
         return vector_store
     except Exception as e:
-        print(f"[AI] Could not load vector store for meeting {meeting_id}: {e}")
+        print(f"[AI] Could not load vector store for document {document_id}: {e}")
         return None
 
 def generate_simple_chat_response(question, transcript):
@@ -73,17 +73,17 @@ def generate_simple_chat_response(question, transcript):
     try:
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        prompt = f"""You are an AI assistant helping users understand their meeting content. 
+        prompt = f"""You are an AI assistant helping users understand their document content. 
 
-Meeting Transcript:
+Document Content:
 {transcript}
 
 User Question: {question}
 
 Instructions:
-- Answer based only on the provided meeting transcript
+- Answer based only on the provided document content
 - Be specific and helpful
-- If the answer isn't in the transcript, say so clearly
+- If the answer isn't in the document, say so clearly
 - Keep responses concise but informative
 - Use a friendly, professional tone
 
@@ -97,21 +97,21 @@ Answer:"""
         return "I'm having trouble processing your question right now. Please try again."
 
 def generate_summary(transcript):
-    """Generate meeting summary - only chunk if necessary"""
+    """Generate document summary - only chunk if necessary"""
     if not should_chunk_transcript(transcript):
         # Process as single document
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(
-            f"""Analyze this meeting transcript and provide a comprehensive summary:
+            f"""Analyze this document and provide a comprehensive summary:
 
-Transcript: {transcript}
+Document: {transcript}
 
 Provide:
 1. **Executive Summary** (2-3 sentences)
-2. **Key Discussion Points** (bullet points)
-3. **Decisions Made** (if any)
-4. **Action Items** (with owners if mentioned)
-5. **Next Steps** (if discussed)
+2. **Key Points** (bullet points)
+3. **Main Topics** (categorized)
+4. **Key Findings** (if applicable)
+5. **Recommendations** (if any)
 6. **Important Quotes** (if any stand out)
 
 Format the response clearly with headers and bullet points."""
@@ -125,60 +125,59 @@ Format the response clearly with headers and bullet points."""
     for i, chunk in enumerate(chunks):
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(
-            f"""Analyze this meeting transcript chunk ({i+1}/{len(chunks)}) and provide:
-            1. Key discussion points
-            2. Decisions made
-            3. Action items
-            4. Important participants mentioned
+            f"""Analyze this document chunk ({i+1}/{len(chunks)}) and provide:
+            1. Key points discussed
+            2. Main topics covered
+            3. Important findings
+            4. Key entities mentioned
             
-            Transcript chunk: {chunk}"""
+            Document chunk: {chunk}"""
         )
         summaries.append(response.text)
     
     # Combine chunk summaries
     final_model = genai.GenerativeModel("gemini-1.5-flash")
     final_summary = final_model.generate_content(
-        f"""Create a comprehensive meeting summary from these chunk summaries:
+        f"""Create a comprehensive document summary from these chunk summaries:
         
         {chr(10).join(summaries)}
         
         Provide:
         1. **Executive Summary** (2-3 sentences)
-        2. **Key Discussion Points** (consolidated bullet points)
-        3. **Decisions Made** (consolidated)
-        4. **Action Items** (with owners, consolidated)
-        5. **Next Steps** (consolidated)
+        2. **Key Points** (consolidated bullet points)
+        3. **Main Topics** (consolidated and categorized)
+        4. **Key Findings** (consolidated)
+        5. **Recommendations** (consolidated)
         6. **Important Quotes** (best ones from all chunks)
         
         Format clearly with headers and remove any duplicates."""
     )
     return final_summary.text
 
-def chatbot_answer(meeting_id: str, question: str):
-    """Answer questions using vector similarity search for large transcripts"""
+def chatbot_answer(document_id: str, question: str):
+    """Answer questions using vector similarity search for large documents"""
     try:
-        vector_store = load_vector_store(meeting_id)
+        vector_store = load_vector_store(document_id)
         
         if not vector_store:
-            return "Vector store not found. Please process the meeting first."
+            return "Vector store not found. Please process the document first."
         
         # Find relevant chunks
         relevant_docs = vector_store.similarity_search(question, k=5)
         context = "\n".join([doc.page_content for doc in relevant_docs])
         
         model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = f"""You are an AI meeting assistant. Based on the following meeting context, answer the user's question accurately and concisely.
+        prompt = f"""You are an AI document assistant. Based on the following document context, answer the user's question accurately and concisely.
 
-Context from meeting:
+Context from document:
 {context}
 
 Question: {question}
 
 Instructions:
 - Answer based only on the provided context
-- If the answer is not in the context, say "I don't have enough information in the meeting transcript to answer that question."
-- Be specific and cite relevant parts of the meeting
-- Include timestamps or speaker information if available
+- If the answer is not in the context, say "I don't have enough information in the document to answer that question."
+- Be specific and cite relevant parts of the document
 - Keep answers concise but informative"""
 
         response = model.generate_content(prompt)
@@ -206,7 +205,7 @@ def identify_speakers(transcript_segments):
     return speakers
 
 def generate_knowledge_graph(transcript):
-    """Generate knowledge graph from meeting transcript"""
+    """Generate knowledge graph from document content"""
     # Only chunk if necessary for knowledge graph extraction
     if should_chunk_transcript(transcript):
         # For large transcripts, extract entities from chunks then combine
@@ -239,40 +238,40 @@ def _extract_entities_from_chunk(text):
     """Extract entities from a single chunk"""
     model = genai.GenerativeModel("gemini-1.5-flash")
     
-    prompt = f"""Analyze this meeting transcript and extract a knowledge graph in JSON format.
+    prompt = f"""Analyze this document and extract a knowledge graph in JSON format.
 
 Text: {text}
 
 Extract entities and relationships to create a knowledge graph. Focus on:
-1. People mentioned (participants, stakeholders)
+1. People mentioned (authors, stakeholders, experts)
 2. Projects, products, or initiatives discussed
 3. Companies, organizations, or departments
 4. Key concepts, topics, or technologies
-5. Action items and tasks
-6. Decisions made
+5. Important findings or conclusions
+6. References to other documents or sources
 
 Return ONLY valid JSON in this exact format:
 {{
     "nodes": [
-        {{"id": "person_john_doe", "label": "John Doe", "type": "person", "properties": {{"role": "manager", "department": "engineering"}}}},
-        {{"id": "project_alpha", "label": "Project Alpha", "type": "project", "properties": {{"status": "active", "priority": "high"}}}},
+        {{"id": "person_john_doe", "label": "John Doe", "type": "person", "properties": {{"role": "author", "expertise": "AI"}}}},
+        {{"id": "project_alpha", "label": "Project Alpha", "type": "project", "properties": {{"status": "active", "domain": "research"}}}},
         {{"id": "topic_budget", "label": "Budget Planning", "type": "topic", "properties": {{"category": "finance"}}}},
-        {{"id": "action_review", "label": "Code Review", "type": "action", "properties": {{"due_date": "next week", "assignee": "John Doe"}}}}
+        {{"id": "finding_key", "label": "Key Finding", "type": "finding", "properties": {{"importance": "high", "validated": "true"}}}}
     ],
     "edges": [
-        {{"source": "person_john_doe", "target": "project_alpha", "relationship": "manages", "weight": 1.0}},
+        {{"source": "person_john_doe", "target": "project_alpha", "relationship": "leads", "weight": 1.0}},
         {{"source": "project_alpha", "target": "topic_budget", "relationship": "requires", "weight": 0.8}},
-        {{"source": "person_john_doe", "target": "action_review", "relationship": "assigned_to", "weight": 1.0}}
+        {{"source": "person_john_doe", "target": "finding_key", "relationship": "discovered", "weight": 1.0}}
     ],
-    "topics": ["budget planning", "project management", "code review", "team coordination"],
+    "topics": ["research methodology", "data analysis", "findings validation", "future work"],
     "action_items": [
-        {{"task": "Complete code review for Project Alpha", "assignee": "John Doe", "due_date": "next week", "priority": "high"}}
+        {{"task": "Validate key findings with additional data", "assignee": "John Doe", "due_date": "next quarter", "priority": "high"}}
     ]
 }}
 
 Make sure to:
 - Use meaningful IDs (no spaces, use underscores)
-- Include diverse entity types (person, project, topic, action, company, technology)
+- Include diverse entity types (person, project, topic, finding, company, technology)
 - Create logical relationships between entities
 - Extract realistic action items with assignees when possible
 - Include relevant properties for each entity"""
@@ -326,7 +325,7 @@ def _create_fallback_graph(text):
     if any(indicator in text.lower() for indicator in people_indicators):
         nodes.append({
             "id": "generic_participant",
-            "label": "Meeting Participant",
+            "label": "Document Author",
             "type": "person",
             "properties": {"role": "participant"}
         })
@@ -340,7 +339,7 @@ def _create_fallback_graph(text):
         })
     
     # Extract topics from common words
-    common_topics = ['meeting', 'discussion', 'project', 'team', 'work', 'plan']
+    common_topics = ['research', 'analysis', 'findings', 'methodology', 'conclusion', 'recommendation']
     for topic in common_topics:
         if topic in text.lower():
             topics.append(topic)
@@ -411,7 +410,7 @@ def _extract_action_items(transcript):
     return action_items[:5]  # Return max 5 action items
 
 def translate_transcript(transcript, target_language):
-    """Translate transcript to target language"""
+    """Translate document content to target language"""
     if should_chunk_transcript(transcript):
         chunks = chunk_transcript(transcript)
         translated_chunks = []
@@ -419,7 +418,7 @@ def translate_transcript(transcript, target_language):
         for chunk in chunks:
             model = genai.GenerativeModel("gemini-1.5-flash")
             response = model.generate_content(
-                f"Translate this meeting transcript to {target_language}:\n\n{chunk}"
+                f"Translate this document to {target_language}:\n\n{chunk}"
             )
             translated_chunks.append(response.text)
         
@@ -427,24 +426,24 @@ def translate_transcript(transcript, target_language):
     else:
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(
-            f"Translate this meeting transcript to {target_language}:\n\n{transcript}"
+            f"Translate this document to {target_language}:\n\n{transcript}"
         )
         return response.text
 
-def generate_meeting_insights(transcript):
-    """Generate additional insights about the meeting"""
+def generate_document_insights(transcript):
+    """Generate additional insights about the document"""
     model = genai.GenerativeModel("gemini-1.5-flash")
     
-    prompt = f"""Analyze this meeting transcript and provide insights:
+    prompt = f"""Analyze this document and provide insights:
 
 {transcript}
 
 Provide:
-1. **Meeting Effectiveness Score** (1-10 with reasoning)
-2. **Participation Analysis** (who spoke most, engagement levels)
-3. **Sentiment Analysis** (overall tone, any conflicts/agreements)
-4. **Follow-up Recommendations** (what should happen next)
-5. **Key Metrics** (duration insights, decision velocity, etc.)
+1. **Document Quality Score** (1-10 with reasoning)
+2. **Content Analysis** (main themes, writing style, structure)
+3. **Key Insights** (most important findings or conclusions)
+4. **Recommendations** (suggested improvements or applications)
+5. **Document Metrics** (length, complexity, readability, etc.)
 
 Format as structured text with clear sections."""
     
